@@ -9,23 +9,26 @@
 #   5. checks the GDS telemetry log for periodic rate-group telemetry
 #
 # Environment: QNX_IMAGE_DIR (default ~/qnx/images/smoke), QNX_SSH_KEY (default ~/.ssh/qnx_vm),
-#              GDS_PORT (default 50000), CHECK_SECONDS (default 20). Requires the qnx-x86_64 build to exist.
+#              QNX_KNOWN_HOSTS, GDS_PORT (default 50000), CHECK_SECONDS (default 20).
+#              Requires the qnx-x86_64 build to exist.
 # Output: run directory under adoption/logs/ref-gds-check-<timestamp> with the GDS logs and the target console log.
 ####
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "${ROOT}/scripts/qnx-vm.sh"
 ART="${ROOT}/adoption/build-artifacts/qnx-x86_64/Ref"
 DICT="${ART}/dict/RefTopologyDictionary.json"
 BIN="${ART}/bin/Ref"
 IMAGE_DIR="${QNX_IMAGE_DIR:-${HOME}/qnx/images/smoke}"
 KEY="${QNX_SSH_KEY:-${HOME}/.ssh/qnx_vm}"
+KNOWN_HOSTS="${QNX_KNOWN_HOSTS:-${HOME}/.ssh/known_hosts_qnx}"
 PORT="${GDS_PORT:-50000}"
 CHECK_SECONDS="${CHECK_SECONDS:-20}"
-RUN_DIR="${ROOT}/adoption/logs/ref-gds-check-$(date +%Y%m%d-%H%M%S)"
-mkdir -p "${RUN_DIR}"
+mkdir -p "${ROOT}/adoption/logs" || exit 1
+RUN_DIR="$(mktemp -d "${ROOT}/adoption/logs/ref-gds-check-$(date +%Y%m%d-%H%M%S).XXXXXXXX")" || exit 1
 
-SSH_OPTS=(-i "${KEY}" -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="${HOME}/.ssh/known_hosts_qnx"
+SSH_OPTS=(-i "${KEY}" -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="${KNOWN_HOSTS}"
           -o ConnectTimeout=5 -o BatchMode=yes)
 GDS_PID=""
 GUEST=""
@@ -48,31 +51,17 @@ trap cleanup EXIT
 [ -x "${BIN}" ] || fail "missing ${BIN}; build with: fprime-util build qnx-x86_64 (in adoption/)"
 [ -n "${QNX_HOST:-}" ] || fail "QNX environment not set; run: source <sdp>/qnxsdp-env.sh"
 command -v fprime-gds >/dev/null || fail "fprime-gds not on PATH; activate the F Prime venv"
+command -v fprime-cli >/dev/null || fail "fprime-cli not on PATH; activate the F Prime venv"
 
 # 1. Guest
-cd "${IMAGE_DIR}" || fail "image directory ${IMAGE_DIR} not found"
-if ! pgrep -f "qemu-system-x86_64.*${IMAGE_DIR}|qemu-system-x86_64.*disk-qemu.vmdk" >/dev/null; then
-    log "booting QNX guest from ${IMAGE_DIR}"
-    # Do not pipe this: the backgrounded QEMU inherits stderr and would hold the pipe open.
-    # setsid keeps QEMU out of this shell's session so it survives SIGHUP when the WSL session closes.
-    setsid mkqnximage --run=-h > "${RUN_DIR}/vm-boot.log" 2>&1 < /dev/null
-fi
-for _ in $(seq 1 60); do
-    # mkqnximage --getip needs arp (net-tools); fall back to the libvirt DHCP lease for this MAC
-    GUEST="$(mkqnximage --getip 2>/dev/null | grep -Eo '([0-9]+\.){3}[0-9]+' | tail -1)"
-    if [ -z "${GUEST}" ]; then
-        MAC="$(grep -o 'OPT_MACADDR=.*' output/options 2>/dev/null | cut -d"'" -f2)"
-        GUEST="$(virsh -c qemu:///system net-dhcp-leases default 2>/dev/null | grep -i "${MAC:-52:54}" \
-                 | grep -Eo '([0-9]+\.){3}[0-9]+' | tail -1)"
-    fi
-    if [ -n "${GUEST}" ] && ssh "${SSH_OPTS[@]}" "root@${GUEST}" true 2>/dev/null; then
-        break
-    fi
-    GUEST=""
-    sleep 2
-done
-[ -n "${GUEST}" ] || fail "guest did not become reachable over SSH"
+IMAGE_DIR="$(cd "${IMAGE_DIR}" && pwd -P)" || fail "image directory not found"
+log "using the QNX guest from ${IMAGE_DIR}"
+qnx_vm_start "${IMAGE_DIR}" "${RUN_DIR}/vm-boot.log" ||
+    fail "could not boot guest; see ${RUN_DIR}/vm-boot.log"
+GUEST="$(qnx_vm_find_guest "${IMAGE_DIR}" "${SSH_OPTS[@]}")" ||
+    fail "guest did not become reachable over SSH; see ${RUN_DIR}"
 HOST_IP="$(ip -4 -o addr show virbr0 | awk '{print $4}' | cut -d/ -f1)"
+[ -n "${HOST_IP}" ] || fail "virbr0 has no IPv4 address"
 log "guest ${GUEST}, host bridge ${HOST_IP}"
 ssh "${SSH_OPTS[@]}" "root@${GUEST}" 'uname -a' | tee "${RUN_DIR}/target-uname.txt"
 
