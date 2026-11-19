@@ -85,11 +85,6 @@ printf '%s\n' "$target" | tee "$run_dir/target-uname.txt"
 guest_dir="/tmp/fprime-osal-${run_dir##*.}"
 ssh "${ssh_opts[@]}" "root@$guest" "mkdir '$guest_dir'"
 remote_dir="$guest_dir"
-executables=()
-for suite in "${suites[@]}"; do
-    executables+=("$build_dir/bin/qnx-x86_64/$suite")
-done
-scp -q "${ssh_opts[@]}" "${executables[@]}" "root@$guest:$remote_dir/"
 
 summary="$run_dir/summary.tsv"
 printf 'suite\tstatus\tpassed\tfailed\tskipped\texit_code\n' >"$summary"
@@ -97,8 +92,14 @@ result=0
 for suite in "${suites[@]}"; do
     log="$run_dir/$suite.log"
     rc=0
-    timeout -k 5s "${seconds}s" ssh "${ssh_opts[@]}" "root@$guest" \
-        "cd '$remote_dir' && ./$suite --gtest_color=no" >"$log" 2>&1 || rc=$?
+    # The default QNX image has a small data partition. Transfer one executable at a time.
+    if scp -q "${ssh_opts[@]}" "$build_dir/bin/qnx-x86_64/$suite" "root@$guest:$remote_dir/" >"$log" 2>&1; then
+        timeout -k 5s "${seconds}s" ssh "${ssh_opts[@]}" "root@$guest" \
+            "cd '$remote_dir' && ./$suite --gtest_color=no" >>"$log" 2>&1 || rc=$?
+    else
+        rc=$?
+    fi
+    ssh "${ssh_opts[@]}" "root@$guest" "rm -f '$remote_dir/$suite'" >>"$log" 2>&1 || result=1
     read -r passed failed skipped < <(awk '
         $1 == "[" && $3 == "]" && $4 ~ /^[0-9]+$/ {
             if ($2 == "PASSED") passed = $4
@@ -108,9 +109,9 @@ for suite in "${suites[@]}"; do
         END { print passed+0, failed+0, skipped+0 }
     ' "$log")
     status=FAIL
-    if (( rc == 0 && passed > 0 )); then
+    if (( rc == 0 && failed == 0 && passed > 0 )); then
         status=PASS
-    elif (( rc == 0 && skipped > 0 )); then
+    elif (( rc == 0 && failed == 0 && skipped > 0 )); then
         status=SKIP
     else
         result=1
