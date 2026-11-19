@@ -1,6 +1,6 @@
 # F Prime on QNX
 
-This project ports NASA/JPL F Prime to QNX 8.0 for the QNX Global Hackathon **Open-Source Contribution & Ports** category. The planned ADCS reference deployment separates the flight software and a telemetry anomaly detector into two processes. A deterministic gate checks the recovery actions suggested by the detector.
+This project ports NASA/JPL F Prime to QNX 8.0 for the QNX Global Hackathon **Open-Source Contribution & Ports** category. The port provides a reusable platform library. Upstream Ref demonstrates adoption, and a separate simulated ADCS reference deployment exercises two-process communication, timing, and advisor recovery. The deterministic recovery gate and ML evaluation are planned milestones.
 
 ## Bring-up status
 
@@ -33,13 +33,13 @@ scripts/m2-check.sh slm
 
 The `udp` and `qnx` checks delay the advisor to fill the bounded snapshot queue, then stop it during the 200-cycle flight run. The `slm` check uses the QNX IPC transport and kills the supervised advisor once. It checks for a new advisor process and session, expiry of old advice, and an uninterrupted flight trace. The harness stages the SLM utilities and libraries from the installed QNX SDK on the test guest. It renders a test copy of the [SLM template](FprimeQnxReference/qnx/m2-slm.xml.in) with process criticality disabled so the test can stop flight cleanly. [QNX SLM reference](https://www.qnx.com/developers/docs/8.0/com.qnx.doc.neutrino.utilities/topic/s/slm.html)
 
-Each command prints the evidence directory. `flight.csv` contains cycle ID, scheduled release, actual start, and commit time for the normalized sun estimate. All three timestamps use the guest's monotonic clock. `summary.txt` reports latency from release to commit and observed misses against the 20 ms period. UDP and native IPC each passed 200 cycles, and the SLM restart run passed 150 cycles in QEMU/KVM. The iteration log records the tested revision, results, and evidence. ML inference, fault-injection comparisons, and qualification under load are later milestones. [M2 results](docs/實作迭代紀錄.md#i-10--驗收-udp原生-ipc-與-slm)
+Each command prints the evidence directory. `flight.csv` contains cycle ID, scheduled release, actual start, and the time at which FlightSW updates its internal sun estimate. All three timestamps use the guest's monotonic clock. `summary.txt` reports time from release to that estimate update and observed misses against the 20 ms period. UDP and native IPC each passed 200 cycles, and the SLM restart run passed 150 cycles in QEMU/KVM. The iteration log records the tested revision, results, and evidence. ML inference, fault-injection comparisons, and qualification under load are later milestones. [M2 results](docs/實作迭代紀錄.md#i-10--驗收-udp原生-ipc-與-slm)
 
 ## Project documents
 
 | Document | Contents |
 | --- | --- |
-| [Project plan](docs/專案規劃書.md) | Architecture, milestones, QNX evidence, and validation plan |
+| [Project plan v0.3](docs/專案規劃書.md) | Platform and adoption scope, M2 evidence, and formal fault validation |
 | [Decision log](docs/決策與變更紀錄.md) | Design decisions and the ASUS handoff |
 | [Implementation log](docs/實作迭代紀錄.md) | Iterations, validation evidence, and agent handoff |
 | [W1 environment log](docs/W1環境建置紀錄.md) | Host bring-up, toolchain, and QNX target results |
