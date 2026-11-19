@@ -22,10 +22,10 @@ For the upstream OSAL suites, initialize the submodules with `git submodule upda
 
 ## Reproduce M2
 
-Use the same QNX and QEMU environment as M1, with the pinned submodules initialized and Python 3.9 or newer. Run these commands from the repository root.
+Use the same QNX and QEMU environment as M1, with the pinned submodules initialized and Python 3.9 or newer. Run these commands from the repository root for a fresh checkout.
 
 ```bash
-(cd FprimeQnxReference && fprime-util build qnx-x86_64 --jobs 3)
+(cd FprimeQnxReference && fprime-util generate qnx-x86_64 && fprime-util build qnx-x86_64 --jobs 2)
 scripts/m2-check.sh udp
 scripts/m2-check.sh qnx
 scripts/m2-check.sh slm
@@ -33,7 +33,7 @@ scripts/m2-check.sh slm
 
 The `udp` and `qnx` checks delay the advisor to fill the bounded snapshot queue, then stop it during the 200-cycle flight run. The `slm` check uses the QNX IPC transport and kills the supervised advisor once. It checks for a new advisor process and session, expiry of old advice, and an uninterrupted flight trace. The harness stages the SLM utilities and libraries from the installed QNX SDK on the test guest. It renders a test copy of the [SLM template](FprimeQnxReference/qnx/m2-slm.xml.in) with process criticality disabled so the test can stop flight cleanly. [QNX SLM reference](https://www.qnx.com/developers/docs/8.0/com.qnx.doc.neutrino.utilities/topic/s/slm.html)
 
-Each command prints the evidence directory. `flight.csv` contains cycle ID, scheduled release, actual start, and the time at which FlightSW updates its internal sun estimate. All three timestamps use the guest's monotonic clock. `summary.txt` reports time from release to that estimate update and observed misses against the 20 ms period. UDP and native IPC each passed 200 cycles, and the SLM restart run passed 150 cycles in QEMU/KVM. The iteration log records the tested revision, results, and evidence. ML inference, fault-injection comparisons, and qualification under load are later milestones. [M2 results](docs/實作迭代紀錄.md#i-10--驗收-udp原生-ipc-與-slm)
+Each command prints the evidence directory. `flight.csv` contains cycle ID, scheduled release, actual start, and the time at which FlightSW updates its internal sun estimate. All three timestamps use the guest's monotonic clock. `summary.txt` reports time from release to that estimate update and observed misses against the 20 ms period. The iteration log records the initial QEMU/KVM validation and the v0.3 clean regression. ML inference, fault-injection comparisons, and qualification under load are later milestones. [M2 results](docs/實作迭代紀錄.md#i-12--v03-整合基準-qnx-客體重跑)
 
 ## Project documents
 
