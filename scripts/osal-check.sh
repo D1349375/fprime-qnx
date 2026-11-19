@@ -11,11 +11,12 @@ if [[ "${1:-}" == -h || "${1:-}" == --help ]]; then
     cat <<'EOF'
 Usage: scripts/osal-check.sh
 
-Source the QNX SDP 8.0 environment, activate the F Prime venv, and provision an
-x86-64 mkqnximage guest with an SSH key. The script boots the guest if needed.
-Optional environment: QNX_IMAGE_DIR (default: ~/qnx/images/smoke), QNX_SSH_KEY
-(default: ~/.ssh/qnx_vm), QNX_KNOWN_HOSTS, OSAL_BUILD_DIR (reuse a cache from
-this checkout), BUILD_JOBS (default: 2), TEST_SECONDS (default: 90).
+Source the QNX SDP 8.0 environment and activate the F Prime venv. The script
+provisions a fresh x86-64 QNX image with its own SSH key and data partition.
+Set QNX_IMAGE_DIR and QNX_SSH_KEY to use an existing image with enough space
+for the death tests. Other optional environment: QNX_KNOWN_HOSTS,
+OSAL_BUILD_DIR (reuse a cache from this checkout),
+BUILD_JOBS (default: 2), TEST_SECONDS (default: 90).
 EOF
     exit 0
 fi
@@ -23,10 +24,6 @@ fi
 [[ -n "${QNX_HOST:-}" && -n "${QNX_TARGET:-}" ]] || fail 'source qnxsdp-env.sh first'
 command -v fprime-util >/dev/null || fail 'activate the F Prime venv first'
 
-image_dir="$(cd "${QNX_IMAGE_DIR:-$HOME/qnx/images/smoke}" && pwd -P)" ||
-    fail 'QNX image directory not found'
-key="$(realpath -e -- "${QNX_SSH_KEY:-$HOME/.ssh/qnx_vm}")" || fail 'QNX SSH key not found'
-[[ -r "$key" ]] || fail 'QNX SSH key is unreadable'
 jobs="${BUILD_JOBS:-2}"
 seconds="${TEST_SECONDS:-90}"
 [[ "$jobs" =~ ^[1-9][0-9]*$ && "$seconds" =~ ^[1-9][0-9]*$ ]] ||
@@ -37,6 +34,21 @@ run_dir="$(mktemp -d "$ROOT/adoption/logs/osal-check-$(date +%Y%m%d-%H%M%S).XXXX
 printf 'OSAL evidence: %s\n' "$run_dir"
 build_dir="$(realpath -m -- "${OSAL_BUILD_DIR:-$run_dir/build}")"
 known_hosts="${QNX_KNOWN_HOSTS:-$run_dir/known_hosts}"
+
+if [[ -n "${QNX_IMAGE_DIR:-}" ]]; then
+    image_dir="$(cd "$QNX_IMAGE_DIR" && pwd -P)" || fail 'QNX image directory not found'
+    key="$(realpath -e -- "${QNX_SSH_KEY:-$HOME/.ssh/qnx_vm}")" || fail 'QNX SSH key not found'
+    [[ -r "$key" ]] || fail 'QNX SSH key is unreadable'
+else
+    image_dir="$run_dir/image"
+    mkdir -- "$image_dir"
+    mkdir -m 700 -- "$run_dir/ssh"
+    key="$run_dir/ssh/id_ed25519"
+    ssh-keygen -q -t ed25519 -N '' -f "$key"
+    # QNX's dumper can write core files for intentional death-test crashes.
+    qnx_vm_build_image "$image_dir" fprime-osal "$key.pub" --data-size=128 >"$run_dir/image.log" 2>&1 ||
+        fail "see $run_dir/image.log"
+fi
 ssh_opts=(-i "$key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new
     -o "UserKnownHostsFile=\"$known_hosts\"" -o ConnectTimeout=5 -o BatchMode=yes)
 
@@ -94,9 +106,8 @@ for suite in "${suites[@]}"; do
     rc=0
     # The default QNX image has a small data partition. Transfer one executable at a time.
     if scp -q "${ssh_opts[@]}" "$build_dir/bin/qnx-x86_64/$suite" "root@$guest:$remote_dir/" >"$log" 2>&1; then
-        # Death tests intentionally abort. Avoid filling the guest with their core files.
         timeout -k 5s "${seconds}s" ssh "${ssh_opts[@]}" "root@$guest" \
-            "cd '$remote_dir' && ulimit -c 0 && ./$suite --gtest_color=no" >>"$log" 2>&1 || rc=$?
+            "cd '$remote_dir' && ./$suite --gtest_color=no" >>"$log" 2>&1 || rc=$?
     else
         rc=$?
     fi

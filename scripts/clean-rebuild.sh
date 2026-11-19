@@ -76,11 +76,7 @@ fi
     fprime-util build qnx-x86_64 -j "$jobs"
 ) 2>&1 | tee "$log_dir/build.log"
 
-(
-    cd "$image_dir"
-    mkqnximage --noprompt --type=qemu --arch=x86_64 --cpu=2 --ram=1536M \
-        --hostname=fprime-ref --ssh-ident="$key.pub" --build
-) 2>&1 | tee "$log_dir/image.log"
+qnx_vm_build_image "$image_dir" fprime-ref "$key.pub" 2>&1 | tee "$log_dir/image.log"
 
 cleanup() {
     if qnx_vm_running "$image_dir"; then

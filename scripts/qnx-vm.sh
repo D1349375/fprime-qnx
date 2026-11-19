@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 # Common QNX SDP 8.0 mkqnximage/QEMU helpers for the validation scripts.
 
+qnx_vm_build_image() {
+    local image_dir="$1" hostname="$2" public_key="$3"
+    shift 3
+    (
+        cd "$image_dir" &&
+            mkqnximage --noprompt --type=qemu --arch=x86_64 --cpu=2 --ram=1536M \
+                --hostname="$hostname" --ssh-ident="$public_key" "$@" --build
+    )
+}
+
 qnx_vm_running() {
     local image_dir="$1" pid
     [[ -r "$image_dir/output/qemu.pid" ]] || return 1
