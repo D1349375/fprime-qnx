@@ -9,6 +9,17 @@
 add_fprime_subdirectory("${CMAKE_CURRENT_LIST_DIR}/Svc/QnxTimer/")
 
 if (FPRIME_PLATFORM STREQUAL "QNX")
+    # GoogleTest is built separately and does not inherit PlatformQnx's POSIX feature macro.
+    foreach (QNX_GTEST_TARGET IN ITEMS gtest gtest_main gmock gmock_main)
+        if (TARGET "${QNX_GTEST_TARGET}")
+            target_compile_definitions("${QNX_GTEST_TARGET}" PRIVATE _QNX_SOURCE)
+        endif()
+    endforeach()
+    if (TARGET PosixTaskTest)
+        # Run the upstream POSIX cases without selecting Linux-only syscalls and priority tests.
+        target_compile_options(PosixTaskTest PRIVATE -UTGT_OS_TYPE_LINUX)
+    endif()
+
     # Framework modules that do not compile on QNX as of F Prime v4.4.2. They are left out of the default build so
     # `fprime-util build` succeeds; a deployment that depends on one still fails loudly at compile time.
     #  - Drv_PosixUartDriver: uses CRTSCTS and B230400, which QNX termios does not define (QNX uses IHFLOW/OHFLOW and
