@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<SLM:system xmlns:SLM="http://www.qnx.com/SLM">
+  <SLM:component name="flight">
+    <SLM:command launch="critical">@M2_DIR@/FlightSW</SLM:command>
+    <SLM:args>--transport qnx --log @M2_DIR@/flight.csv</SLM:args>
+    <SLM:stdout>@M2_DIR@/flight.log</SLM:stdout>
+    <SLM:stderr>@M2_DIR@/flight.err</SLM:stderr>
+    <SLM:waitfor wait="pathname" polltime="100:5000">/dev/name/local/fprime-m2</SLM:waitfor>
+    <SLM:repair>stop</SLM:repair>
+  </SLM:component>
+  <SLM:component name="advisor">
+    <SLM:command>@M2_DIR@/MlAdvisor</SLM:command>
+    <SLM:args>--transport qnx</SLM:args>
+    <SLM:depend state="session">flight</SLM:depend>
+    <SLM:stdout iomode="a">@M2_DIR@/advisor.log</SLM:stdout>
+    <SLM:stderr iomode="a">@M2_DIR@/advisor.err</SLM:stderr>
+    <SLM:repair backoff="1">restart</SLM:repair>
+  </SLM:component>
+  <SLM:module name="m2">
+    <SLM:member>flight</SLM:member>
+    <SLM:member>advisor</SLM:member>
+  </SLM:module>
+</SLM:system>

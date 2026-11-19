@@ -4,7 +4,7 @@ This project ports NASA/JPL F Prime to QNX 8.0 for the QNX Global Hackathon **Op
 
 ## Bring-up status
 
-The x86-64 toolchain, QNX platform library, and pulse-driven `QnxTimer` run the upstream F Prime v4.4.2 `Ref` deployment on QNX 8.0 under QEMU/KVM. The ground data system (GDS) sends `CMD_NO_OP` and receives its two events and rate group 1 telemetry. See the [implementation log](docs/實作迭代紀錄.md) for V1 OSAL, V2 Ref/GDS, and V2b clean rebuild evidence and remaining work.
+The x86-64 toolchain, QNX platform library, and pulse-driven `QnxTimer` run the upstream F Prime v4.4.2 `Ref` deployment on QNX 8.0 under QEMU/KVM. The ground data system (GDS) sends `CMD_NO_OP` and receives its two events and rate group 1 telemetry. The M2 reference also runs two F Prime deployments using simulated sun sensors and deterministic advice. The [implementation log](docs/實作迭代紀錄.md) records platform and reference-deployment evidence.
 
 Start with the [ASUS VivoBook X409JP setup guide](docs/setup-asus-vivobook.md). It covers Ubuntu on WSL2, KVM, QNX SDP, headless QEMU, and the F Prime tooling.
 
@@ -19,6 +19,21 @@ scripts/clean-rebuild.sh
 The script clones the current checkout's committed revision into a new directory, initializes the pinned submodules, builds `Ref`, creates and boots an x86-64 QNX image, and runs the GDS check. It prints the directory containing the source revisions, build logs, and target evidence. [QNX mkqnximage reference](https://www.qnx.com/developers/docs/8.0/com.qnx.doc.neutrino.utilities/topic/m/mkqnximage.html)
 
 For the upstream OSAL suites, initialize the submodules with `git submodule update --init --recursive` and run `scripts/osal-check.sh` from the same revision. Each run defaults to a new x86-64 QNX guest with extra space for death-test core files. Set `QNX_IMAGE_DIR` and `QNX_SSH_KEY` to use your own provisioned image with sufficient space. The OSAL log directory contains the suite results and target output.
+
+## Reproduce M2
+
+Use the same QNX and QEMU environment as M1, with the pinned submodules initialized and Python 3.9 or newer. From the repository root:
+
+```bash
+(cd FprimeQnxReference && fprime-util build qnx-x86_64 --jobs 3)
+scripts/m2-check.sh udp
+scripts/m2-check.sh qnx
+scripts/m2-check.sh slm
+```
+
+The `udp` and `qnx` checks delay the advisor to fill the bounded snapshot queue, then stop it during the 200-cycle flight run. The `slm` check uses the QNX IPC transport and kills the supervised advisor once. It checks for a new advisor process and session, expiry of old advice, and an uninterrupted flight trace. The harness stages the SLM utilities and libraries from the installed QNX SDK on the test guest. It renders a test copy of the [SLM template](FprimeQnxReference/qnx/m2-slm.xml.in) with process criticality disabled so the test can stop flight cleanly. [QNX SLM reference](https://www.qnx.com/developers/docs/8.0/com.qnx.doc.neutrino.utilities/topic/s/slm.html)
+
+Each command prints the evidence directory. `flight.csv` contains cycle ID, scheduled release, actual start, and commit time for the normalized sun estimate. All three timestamps use the guest's monotonic clock. `summary.txt` reports latency from release to commit and observed misses against the 20 ms period. These are short QEMU/KVM smoke checks. ML inference, fault-injection comparisons, and qualification under load are later milestones.
 
 ## Project documents
 

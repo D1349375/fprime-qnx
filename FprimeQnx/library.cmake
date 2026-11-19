@@ -7,6 +7,7 @@
 # F Prime includes library manifests after the framework modules are registered, so framework targets exist here.
 ####
 add_fprime_subdirectory("${CMAKE_CURRENT_LIST_DIR}/Svc/QnxTimer/")
+add_fprime_subdirectory("${CMAKE_CURRENT_LIST_DIR}/Drv/QnxMsgDriver/")
 
 if (FPRIME_PLATFORM STREQUAL "QNX")
     # GoogleTest is built separately and does not inherit PlatformQnx's POSIX feature macro.

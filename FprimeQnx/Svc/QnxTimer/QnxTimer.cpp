@@ -68,6 +68,14 @@ void QnxTimer ::cleanup() {
 }
 
 void QnxTimer ::startTimer(const Fw::TimeInterval& interval) {
+    this->runTimer(interval, nullptr);
+}
+
+void QnxTimer ::startTimerAt(const Fw::TimeInterval& interval, const struct timespec& firstRelease) {
+    this->runTimer(interval, &firstRelease);
+}
+
+void QnxTimer ::runTimer(const Fw::TimeInterval& interval, const struct timespec* firstRelease) {
     // Private channel: only this process can attach to it
     this->m_chid = ChannelCreate(_NTO_CHF_PRIVATE);
     if (this->m_chid == -1) {
@@ -102,8 +110,9 @@ void QnxTimer ::startTimer(const Fw::TimeInterval& interval) {
     struct itimerspec itval;
     itval.it_interval.tv_sec = seconds;
     itval.it_interval.tv_nsec = static_cast<long>(interval.getUSeconds()) * 1000L;
-    itval.it_value = itval.it_interval;
-    if (timer_settime(this->m_timerId, 0, &itval, nullptr) == -1) {
+    itval.it_value = firstRelease == nullptr ? itval.it_interval : *firstRelease;
+    const int flags = firstRelease == nullptr ? 0 : TIMER_ABSTIME;
+    if (timer_settime(this->m_timerId, flags, &itval, nullptr) == -1) {
         Fw::Logger::log("QnxTimer timer_settime error: %s\n", strerror(errno));
         this->cleanup();
         return;

@@ -38,6 +38,9 @@ class QnxTimer final : public QnxTimerComponentBase {
     //! Start the timer and emit CycleOut every interval. Blocks the calling thread until quit() is called.
     void startTimer(const Fw::TimeInterval& interval);
 
+    //! Start with an absolute first release on CLOCK_MONOTONIC.
+    void startTimerAt(const Fw::TimeInterval& interval, const struct timespec& firstRelease);
+
     //! Request the timer loop to exit. Async-signal-safe.
     void quit();
 
@@ -45,6 +48,8 @@ class QnxTimer final : public QnxTimerComponentBase {
     U64 getOverrunCount() const;
 
   private:
+    void runTimer(const Fw::TimeInterval& interval, const struct timespec* firstRelease);
+
     //! Release the timer, connection, and channel if they were created
     void cleanup();
 
