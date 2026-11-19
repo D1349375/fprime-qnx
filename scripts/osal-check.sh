@@ -94,8 +94,9 @@ for suite in "${suites[@]}"; do
     rc=0
     # The default QNX image has a small data partition. Transfer one executable at a time.
     if scp -q "${ssh_opts[@]}" "$build_dir/bin/qnx-x86_64/$suite" "root@$guest:$remote_dir/" >"$log" 2>&1; then
+        # Death tests intentionally abort. Avoid filling the guest with their core files.
         timeout -k 5s "${seconds}s" ssh "${ssh_opts[@]}" "root@$guest" \
-            "cd '$remote_dir' && ./$suite --gtest_color=no" >>"$log" 2>&1 || rc=$?
+            "cd '$remote_dir' && ulimit -c 0 && ./$suite --gtest_color=no" >>"$log" 2>&1 || rc=$?
     else
         rc=$?
     fi
