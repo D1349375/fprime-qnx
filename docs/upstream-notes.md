@@ -53,3 +53,18 @@ native Linux host without Rust. Rust's QNX targets (`x86_64-pc-nto-qnx800`, `aar
 channels. `cmdSeq` (`Svc.CmdSequencer`) remains.
 
 **Upstream candidate.** Make `Ref`'s `wasmSeq` instance conditional, or document Rust as a hard requirement for `Ref`.
+
+## 5. OSAL test portability on the QNX x86-64 guest
+
+The V1 run used the pinned upstream OSAL test sources and recorded the original verdicts. See the
+[implementation log](實作迭代紀錄.md) for the case counts, environment, and probes.
+
+- `PosixTaskScheduling.DefaultModeNiceBandPriorityRemainsSchedRr` expects a request for priority 120 to clamp to the
+  maximum. On QNX, the observed SCHED_RR range is 1–253 and the task retains 120. Compute the expected priority from the
+  target's range.
+- The shared `GetFreeSpace` rule uses `/` and assumes available space. On the mkqnximage guest, `/` is IFS with zero
+  free blocks. Use a writable test directory for the positive-free-space check.
+- The generic RawTime bounds compare unrounded nanoseconds to a `std::chrono::system_clock` upper bound. QNX's C++
+  clock uses microseconds in this build. Use `clock_gettime` for both reference bounds, or compare at their shared precision.
+- The `DoubleCreateAssertion` death test expects a capitalized string. The QNX process dies and prints
+  `assertion failed`. Match the platform-independent part of the diagnostic with the same death requirement.
