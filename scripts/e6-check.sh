@@ -6,6 +6,7 @@ source "$root/scripts/qnx-vm.sh"
 fixture="$root/FprimeQnxReference/test/e6"
 if [[ "${1:-}" == --help && $# == 1 ]]; then
     echo 'Usage: scripts/e6-check.sh /path/to/qnx-x86_64-apk-sysroot'
+    echo 'Set E6_HOST_MLPACK_INCLUDE when mlpack 4.7 headers are outside the host compiler search path.'
     exit 0
 fi
 [[ $# == 1 ]] || { echo 'Supply the QNX APK sysroot. See --help.' >&2; exit 2; }
@@ -29,6 +30,9 @@ target_pkg() {
     qcc -V
     printf 'SDP baseline=%s\nAPK sysroot=%s\n' "$QNX_TARGET" "$sysroot"
     apk --root "$sysroot" info -v
+    if [[ -r "$sysroot/.e6-apks/SHA256SUMS" ]]; then
+        cat "$sysroot/.e6-apks/SHA256SUMS"
+    fi
     "${CXX:-c++}" --version
     pkg-config --modversion armadillo openblas
     target_pkg --modversion armadillo openblas
@@ -41,7 +45,15 @@ read -r -a host_flags <<<"$(pkg-config --cflags --libs armadillo openblas)"
 # OpenBLAS publishes a Clang-specific OpenMP flag. QCC/GCC only needs
 # the include and linker settings for this FFN.
 read -r -a target_flags <<<"$(target_pkg --cflags-only-I --libs armadillo openblas)"
-"${CXX:-c++}" -std=c++17 -O2 -DARMA_DONT_USE_OPENMP "${fixture}/ffn-smoke.cpp" \
+host_includes=()
+if [[ -n "${E6_HOST_MLPACK_INCLUDE:-}" ]]; then
+    if [[ ! -r "$E6_HOST_MLPACK_INCLUDE/mlpack/core/util/version.hpp" ]]; then
+        echo 'E6_HOST_MLPACK_INCLUDE must contain the host mlpack headers.' >&2
+        exit 2
+    fi
+    host_includes=(-I "$E6_HOST_MLPACK_INCLUDE")
+fi
+"${CXX:-c++}" -std=c++17 -O2 -DARMA_DONT_USE_OPENMP "${host_includes[@]}" "${fixture}/ffn-smoke.cpp" \
     -o "$run/ffn-host" "${host_flags[@]}" >"$run/host-build.log" 2>&1
 QNX_TARGET="$sysroot" "$QNX_HOST/usr/bin/q++" -Vgcc_ntox86_64_cxx -std=c++17 -O2 \
     -D_QNX_SOURCE -DARMA_DONT_USE_OPENMP -I"$sysroot/usr/include" -L"$sysroot/usr/lib" \
