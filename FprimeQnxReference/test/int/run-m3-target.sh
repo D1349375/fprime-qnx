@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-[ "$#" -eq 3 ] || exit 2
+case "$#" in 3|5) ;; *) exit 2 ;; esac
 target_dir="$1"
 case "$target_dir" in /tmp/fprime-m3.*) ;; *) exit 2 ;; esac
 suffix="${target_dir#/tmp/fprime-m3.}"
@@ -14,6 +14,19 @@ case "$scenario:$repair" in
     *) exit 2 ;;
 esac
 
+flight_options=
+advisor_options=
+entry=m3
+if [ "$#" -eq 5 ]; then
+    case "$4" in ''|0|*[!0-9]*) exit 2 ;; esac
+    flight_options=" --m4-seed $4"
+    case "$scenario:$5" in
+        normal:fdir|recovery:fdir) entry=flight ;;
+        normal:learned|recovery:learned|crash:learned) advisor_options=" --model $target_dir/model.txt" ;;
+        *) exit 2 ;;
+    esac
+fi
+
 control="/dev/slm-fprime-m3-$suffix"
 export LD_LIBRARY_PATH="$target_dir/slm-libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 # Do not carry a log or a control channel forward from a previous SLM process.
@@ -22,13 +35,14 @@ for file in flight.csv flight.log flight.err advisor.log advisor.err link.csv sl
     : > "$file"
 done
 sed -e "s|@DIR@|$target_dir|g" -e "s/@SCENARIO@/$scenario/g" -e "s/@REPAIR@/$repair/g" \
+    -e "s|@FLIGHT_OPTIONS@|$flight_options|g" -e "s|@ADVISOR_OPTIONS@|$advisor_options|g" \
     m3-slm.xml.in > m3-slm.xml
 ulimit -c 0 || true
 monitor=
 watcher=
 cleanup() {
     if [ -n "$monitor" ] && kill -0 "$monitor" 2>/dev/null; then
-        ./slmctl -n "$control" 'stop m3' >/dev/null 2>&1 || true
+        ./slmctl -n "$control" "stop $entry" >/dev/null 2>&1 || true
         kill -TERM "$monitor" 2>/dev/null || true
         wait "$monitor" 2>/dev/null || true
     fi
@@ -55,7 +69,7 @@ if [ "$scenario" = crash ]; then
     done
 fi
 
-./slm -VV -R 2/min -n "$control" -s m3 -x m3 m3-slm.xml > slm.log 2>&1 &
+./slm -VV -R 2/min -n "$control" -s "$entry" -x "$entry" m3-slm.xml > slm.log 2>&1 &
 monitor=$!
 attempt=0
 until grep -q '^SUMMARY ' flight.log; do

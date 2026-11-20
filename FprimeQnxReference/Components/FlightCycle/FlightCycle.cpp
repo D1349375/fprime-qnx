@@ -1,4 +1,5 @@
 #include "Components/FlightCycle/FlightCycle.hpp"
+#include "Components/FlightCycle/AdcsReplay.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -39,13 +40,15 @@ void FlightCycle::schedule(Handoff& handoff,
                            EstimateReceiver& receiver,
                            std::uint64_t firstRelease,
                            std::uint64_t limit,
-                           Scenario scenario) {
+                           Scenario scenario,
+                           std::uint64_t replaySeed) {
     m_handoff = &handoff;
     m_timer = &timer;
     m_receiver = &receiver;
     m_firstRelease = firstRelease;
     m_limit = limit;
     m_scenario = scenario;
+    m_replaySeed = replaySeed;
 }
 
 void FlightCycle::fallBack(CycleRecord& record, const char* reason, bool revoke) {
@@ -68,6 +71,10 @@ void FlightCycle::recover(const Snapshot& snapshot, CycleRecord& record) {
     const auto now = snapshot.sampledNs;
     const auto& sensors = snapshot.sensors;
     m_recovery.observe(sensors);
+    record.fdirCandidate = m_recovery.fdirCandidate();
+    if (record.fdirCandidate != NoChannel) {
+        record.fdirCandidateNs = monotonicNs();
+    }
     if (m_advice.session != 0 &&
         (m_advice.sampledNs > now || now - m_advice.sampledNs > FreshnessNs)) {
         fallBack(record, "RESULT_TIMEOUT", true);
@@ -110,9 +117,10 @@ void FlightCycle::recover(const Snapshot& snapshot, CycleRecord& record) {
     }
     record.isolated = now < m_isolatedUntil;
     record.fdir = m_advice.session == 0;
-    const int channel = m_recovery.fdirCandidate();
-    if (record.fdir && channel != NoChannel) {
-        record.fdirGate = m_recovery.evaluate(sensors, ExcludeSunSensor, static_cast<unsigned>(channel), true, now);
+    if (record.fdir && record.fdirCandidate != NoChannel) {
+        record.fdirGate = m_recovery.evaluate(sensors, ExcludeSunSensor,
+                                               static_cast<unsigned>(record.fdirCandidate), true, now);
+        record.fdirGateNs = monotonicNs();
     }
     record.advice = m_advice;
     record.excluded = m_recovery.excludedMask();
@@ -134,7 +142,10 @@ void FlightCycle::run_handler(FwIndexType, U32) {
     }
 
     const bool legacy = m_scenario == Scenario::Legacy;
-    const Snapshot snapshot{cycle, start, legacy ? sampleSensors(cycle) : recoverySensors(m_scenario, cycle)};
+    const bool seeded = m_replaySeed != 0;
+    const auto replay = seeded ? M4::sample(m_replaySeed, cycle, m_scenario != Scenario::Normal) : M4::ReplaySample{};
+    const auto readings = legacy ? sampleSensors(cycle) : seeded ? replay.readings : recoverySensors(m_scenario, cycle);
+    const Snapshot snapshot{cycle, start, readings};
     CycleRecord record{};
     record.cycle = cycle;
     record.release = m_firstRelease + (cycle - 1) * PeriodNs;
@@ -162,7 +173,7 @@ void FlightCycle::run_handler(FwIndexType, U32) {
     }
     if (!legacy) {
         record.sensors = snapshot.sensors;
-        const auto truth = truthSun(cycle);
+        const auto truth = seeded ? replay.truth : truthSun(cycle);
         record.truth = {truth[0], truth[1], truth[2], true};
         if (!m_sensorFaultLogged && cycle >= InjectionCycle &&
             m_scenario != Scenario::Normal && m_scenario != Scenario::Gate && m_scenario != Scenario::Transport) {

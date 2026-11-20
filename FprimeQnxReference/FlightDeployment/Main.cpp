@@ -54,6 +54,7 @@ void writeTiming(M2::Handoff& handoff,
             for (auto reading : row.sensors) {
                 std::fprintf(file, ",%u", static_cast<unsigned>(reading));
             }
+            std::fprintf(file, ",%d,%" PRIu64 ",%" PRIu64, row.fdirCandidate, row.fdirGateNs, row.fdirCandidateNs);
         }
         std::fputc('\n', file);
     };
@@ -124,6 +125,13 @@ void runLink(M2::Transport& transport,
     std::uint64_t acceptedCycle = 0;
     M2::Snapshot latest{};
     M2::Snapshot issued{};
+    const auto refreshSnapshot = [&handoff, &latest]() {
+        for (unsigned i = 0; i < M2::SnapshotCapacity; ++i) {
+            if (!handoff.snapshots.pop(latest)) {
+                break;
+            }
+        }
+    };
     // Keep a cycle-addressed sample long enough to distinguish stale from unissued.
     std::array<M2::Snapshot, 32> issuedHistory{};
     std::uint64_t epoch = 0;
@@ -137,6 +145,11 @@ void runLink(M2::Transport& transport,
             advisorPid = 0;
         }
         if (!received) {
+            if (m3) {
+                // Keep the latest sample during advisor startup or absence. A
+                // full drop-newest queue otherwise retains only old snapshots.
+                refreshSnapshot();
+            }
             continue;
         }
         if (!hub.unwrap(frame, request)) {
@@ -166,11 +179,7 @@ void runLink(M2::Transport& transport,
                 handoff.session.store(session, std::memory_order_release);
                 log(M2::monotonicNs(), "SESSION", advisorPid, session, 0, 0);
             }
-            for (unsigned i = 0; i < M2::SnapshotCapacity; ++i) {
-                if (!handoff.snapshots.pop(latest)) {
-                    break;
-                }
-            }
+            refreshSnapshot();
             const auto now = M2::monotonicNs();
             if (pause != nullptr && latest.cycle >= M2::InjectionCycle &&
                 pause->begin.load(std::memory_order_relaxed) == 0) {
@@ -266,7 +275,7 @@ int main(int argc, char** argv) {
     M2::Options options;
     if (!M2::parseOptions(argc, argv, true, options) ||
         (options.scenario == M2::Scenario::Transport && options.transport != M2::TransportKind::Qnx)) {
-        std::fprintf(stderr, "Usage: FlightSW [--transport udp|qnx] [--port N] [--cycles N] [--log PATH] [--m3 SCENARIO] [--link-log PATH]\n");
+        std::fprintf(stderr, "Usage: FlightSW [--transport udp|qnx] [--port N] [--cycles N] [--log PATH] [--m3 SCENARIO] [--link-log PATH] [--m4-seed N]\n");
         return 2;
     }
 
@@ -293,7 +302,7 @@ int main(int argc, char** argv) {
     if (m3) {
         std::fputs(",submitted,fdir,rejoin,fallback,gate,fdir_gate,isolated,sensor_fault,excluded,"
                    "advisor_sample_ns,checked_session,checked_cycle,checked_sample_ns,gate_ns,fallback_ns,"
-                   "action,channel,truth_x,truth_y,truth_z,s0,s1,s2,s3,s4,s5", file);
+                   "action,channel,truth_x,truth_y,truth_z,s0,s1,s2,s3,s4,s5,fdir_candidate,fdir_gate_ns,fdir_candidate_ns", file);
         std::setvbuf(events, nullptr, _IOLBF, 0);
         std::fputs("ns,event,pid,session,cycle,sample_ns\n", events);
     }
@@ -350,7 +359,7 @@ int main(int argc, char** argv) {
     const int scheduleStatus = pthread_setschedparam(pthread_self(), SCHED_FIFO, &priority);
     if (scheduleStatus == 0) {
         const auto firstRelease = M2::monotonicNs() + 100000000;
-        flight.schedule(handoff, timer, receiver, firstRelease, options.cycles, options.scenario);
+        flight.schedule(handoff, timer, receiver, firstRelease, options.cycles, options.scenario, options.replaySeed);
         std::printf("READY pid=%ld transport=%s period_ns=%" PRIu64 " first_release_ns=%" PRIu64
                     " fifo_priority=%d\n", static_cast<long>(getpid()), M2::transportName(options.transport),
                     M2::PeriodNs, firstRelease, priority.sched_priority);

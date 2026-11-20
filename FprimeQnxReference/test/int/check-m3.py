@@ -68,6 +68,7 @@ def angle_error(row):
 def assess(directory):
     config = dict(line.split("=", 1) for line in (directory / "config.txt").read_text().splitlines())
     group = config["group"]
+    advisor_expected = group not in {"fdir_normal", "fdir_recovery"}
     cycles, period, deadline, freshness = (
         int(config[name]) for name in ("cycles", "period_ns", "deadline_ns", "freshness_ns")
     )
@@ -125,7 +126,7 @@ def assess(directory):
             failures.append(message)
 
     link = list(csv_rows(directory / "link.csv", dict.fromkeys(("ns", "pid", "session", "cycle", "sample_ns"), int)))
-    if not link or any(a["ns"] > b["ns"] for a, b in zip(link, link[1:])):
+    if (advisor_expected and not link) or any(a["ns"] > b["ns"] for a, b in zip(link, link[1:])):
         raise Incomplete("Missing or unordered IPC trace")
     if sum(row["event"] == "QUEUED" for row in link) != int(stats["accepted"]):
         raise Incomplete("IPC trace does not agree with the final result count")
@@ -141,8 +142,12 @@ def assess(directory):
     ]
     rejoined = [row for row in records if row["rejoin"]]
     warmup = int(config["min_warmup_cycles"])
-    require(any(row["cycle_id"] <= warmup and row["rejoin"] for row in records),
-            "Advisor did not warm up by the scheduled cycle")
+    if advisor_expected:
+        require(any(row["cycle_id"] <= warmup and row["rejoin"] for row in records),
+                "Advisor did not warm up by the scheduled cycle")
+    else:
+        require(not starts and not rejoined and not sessions and all(r["fdir"] for r in records),
+                "FDIR control unexpectedly used an advisor session")
     for row in rejoined:
         key = (row["checked_session"], row["checked_cycle"], row["checked_sample_ns"])
         require(key in issued and key in queued and
@@ -264,7 +269,7 @@ def assess(directory):
                   f"transport_release_ns={release['ns']} "
                   f"transport_client_return_ns={returned}")
 
-    if group in {"q1", "q2", "stall", "recovery"}:
+    if group in {"q1", "q2", "stall", "recovery", "fdir_recovery"}:
         expected = "gate" if group == "recovery" else "fdir_gate"
         require(any(r[expected] == "APPROVED" and r["excluded"] == 1 for r in records),
                 f"No {expected} approval of the independently faulty channel")
@@ -284,7 +289,7 @@ def assess(directory):
         require(all(not r["valid"] and r["submitted"] and r["excluded"] == 0
                     for r in records if r["cycle_id"] >= int(config["injection_cycle"])),
                 "Insufficient geometry did not hold a committed degraded output")
-    elif group == "normal":
+    elif group in {"normal", "fdir_normal"}:
         require(all(r["valid"] and r["excluded"] == 0 and not r["fallback"] for r in records),
                 "No-fault baseline unexpectedly excluded, degraded, or fell back")
 
