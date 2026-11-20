@@ -59,6 +59,7 @@ def assess(replay, directory):
     if log.count(exact_model_marker) != expected_starts:
         raise ValueError("Unexpected number of initialized FFN instances")
     observed = {}
+    live_scores = {}
     for line in log:
         if line.startswith("RESULT "):
             entry = fields(line)
@@ -69,6 +70,7 @@ def assess(replay, directory):
                     not score_close(float(entry["score"]), prediction.score) or int(entry["alert"]) != prediction.label):
                 raise ValueError(f"Live advisor inference differs from held-out replay at {key}")
             observed[key] = prediction
+            live_scores[key] = float(entry["score"])
     if bool(observed) != (mode == "learned"):
         raise ValueError("The advisor result log does not match the requested mode")
 
@@ -112,6 +114,18 @@ def assess(replay, directory):
         "fdir_false_alert_samples": residual_false, "verified_live_posts": len(observed),
         "verified_flight_uses": expected_uses, "approved_actions": len(approvals),
     }
+
+    if group in {"q1", "q2"}:
+        report["verified_rejoins"] = [
+            {
+                "gate_ns": row["gate_ns"], "flight_cycle": row["cycle_id"],
+                "session": row["checked_session"], "snapshot_cycle": row["checked_cycle"],
+                "submitted": bool(row["submitted"]), "valid_estimate": bool(row["valid"]),
+                "live_score": live_scores[row["checked_session"], row["checked_cycle"]],
+                "replay_score": prediction.score, "alert": prediction.label,
+            }
+            for row, prediction in received if row["rejoin"]
+        ]
 
     if bias:
         learned_alarm = next((row for row, prediction in received if prediction.label), None)

@@ -8,16 +8,32 @@ fixture="$project/test/m4"
 integration="$project/test/int"
 
 usage() {
-    echo 'Usage: scripts/m4-check.sh QNX_APK_SYSROOT adcs-pilot|adcs|opssat [OPSSAT_V2_DIR]'
+    cat <<'EOF'
+Usage: scripts/m4-check.sh QNX_APK_SYSROOT adcs-pilot|adcs
+       scripts/m4-check.sh QNX_APK_SYSROOT adcs-pair [PAIRS] (default: 10)
+       scripts/m4-check.sh QNX_APK_SYSROOT opssat [OPSSAT_V2_DIR]
+EOF
 }
 if [[ $# == 1 && $1 == --help ]]; then usage; exit 0; fi
 if [[ $# -lt 2 || $# -gt 3 ]]; then usage >&2; exit 2; fi
-case "$2:$#" in adcs-pilot:2|adcs:2|opssat:2|opssat:3) ;; *) usage >&2; exit 2 ;; esac
+case "$2:$#" in
+    adcs-pilot:2|adcs:2|opssat:2|opssat:3) ;;
+    adcs-pair:2|adcs-pair:3)
+        pairs="${3:-10}"
+        [[ "$pairs" =~ ^[1-9][0-9]*$ && "$pairs" == "$((pairs))" ]] || { echo 'Expected a positive pair count' >&2; exit 2; }
+        ;;
+    *) usage >&2; exit 2 ;;
+esac
 exec </dev/null
 : "${QNX_HOST:?Source the QNX SDP environment first}"
 : "${QNX_TARGET:?Source the QNX SDP environment first}"
 sysroot="$(realpath -e "$1")"
 mode="$2"
+kernel_trace="${M4_KERNEL_TRACE:-0}"
+case "$mode:$kernel_trace" in
+    *:0|adcs-pair:1) ;;
+    *) echo 'M4_KERNEL_TRACE=1 is available for adcs-pair' >&2; exit 2 ;;
+esac
 sdk="$QNX_TARGET/x86_64"
 python="${M4_PYTHON:-python3}"
 export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 PYTHONDONTWRITEBYTECODE=1
@@ -48,7 +64,12 @@ fi
     git -C "$root" status --short
     git -C "$root" submodule status --recursive
     cat /etc/os-release
+    uname -sr
     qcc -V
+    qemu-system-x86_64 --version
+    for package in "$QNX_TARGET"/../../.packages/metadata/com.qnx.qnx800*/*/; do
+        if [[ -d "$package" ]]; then printf 'SDP package=%s\n' "${package#*/metadata/}"; fi
+    done
     "${CXX:-c++}" --version
     pkg-config --modversion armadillo openblas
     grep -E '^#define MLPACK_VERSION_(MAJOR|MINOR|PATCH)' \
@@ -198,6 +219,20 @@ scp -q "${ssh_opts[@]}" "$run/watch-death" "$sdk/usr/sbin/slm" "$sdk/bin/slmctl"
 scp -q "${ssh_opts[@]}" "$sdk/usr/lib/libexpat.so.2" "$sdk/lib/libsecpol.so.1" "$sdk/lib/libqh.so.1" \
     "$target:$remote/slm-libs/"
 
+target_runner=run-m3-target.sh
+trace_files=()
+if (( kernel_trace )); then
+    target_runner=run-m3-traced.sh
+    trace_files=(trace.kev trace-anchor.txt trace-status.txt tracelogger.log trace-control.log)
+    qcc -Vgcc_ntox86_64 -std=c11 -Wall -Wextra "$integration/trace-control.c" -o "$run/trace-control" \
+        >"$run/trace-build.log" 2>&1 || { cat "$run/trace-build.log" >&2; exit 1; }
+    sha256sum "$run/trace-control" "$sdk/usr/sbin/tracelogger" "$sdk/lib/libtracelog.so.1" >>"$run/binaries.sha256"
+    scp -q "${ssh_opts[@]}" "$run/trace-control" "$sdk/usr/sbin/tracelogger" \
+        "$integration/run-m3-traced.sh" "$target:$remote/"
+    scp -q "${ssh_opts[@]}" "$sdk/lib/libtracelog.so.1" "$target:$remote/runtime/"
+    guest_logs+=("/dev/shmem/fprime-m3-${remote##*.}.kev")
+fi
+
 result=0
 printf 'run_id\tgroup\tseed\ttarget_exit\ttiming_exit\tadcs_exit\tverdict\n' >"$run/results.tsv"
 files=(flight.csv flight.log flight.err advisor.log advisor.err link.csv slm.log death.csv death.log)
@@ -212,23 +247,33 @@ ssh "${ssh_opts[@]}" "$target" "$stage_logs" >"$run/trace-staging.log" 2>&1 ||
     { cat "$run/trace-staging.log" >&2; exit 1; }
 files+=(m3-slm.xml)
 run_scenario() {
-    local run_id="$1" seed="$2" group="$3" scenario="$4" advisor="$5"
+    local run_id="$1" seed="$2" group="$3" scenario="$4" advisor="$5" repair="${6:-restart}"
     local round="$run/$run_id" rc=0 timing=0 assessment=0 verdict=PASS name
     local transfers=()
     echo "Running $run_id on QNX"
     mkdir "$round"
     printf '%s\n' "run_id=$run_id" "seed=$seed" "group=$group" "scenario=$scenario" "advisor=$advisor" \
-        'repair=restart' 'cycles=230' 'period_ns=20000000' 'deadline_ns=20000000' 'freshness_ns=250000000' \
+        "repair=$repair" "kernel_trace=$kernel_trace" 'cycles=230' 'period_ns=20000000' 'deadline_ns=20000000' 'freshness_ns=250000000' \
         'fallback_limit_ns=300000000' 'q1_rejoin_limit_ns=1800000000' 'min_warmup_cycles=40' \
         'injection_cycle=55' 'angle_limit_deg=2' 'stable_cycles=20' 'exit_observer=procmgr' \
         'workload=seeded-adcs' 'trace_storage=qnx-shmem' 'crash_signal=SIGKILL' 'slm_rate=2/min' \
         'slm_backoff_s=1' >"$round/config.txt"
     timeout -k 5s 28s ssh "${ssh_opts[@]}" "$target" \
-        "$target_environment sh '$remote/run-m3-target.sh' '$remote' '$scenario' restart '$seed' '$advisor'" \
+        "$target_environment sh '$remote/$target_runner' '$remote' '$scenario' '$repair' '$seed' '$advisor'" \
         >"$round/target.log" 2>&1 || rc=$?
     printf '%s\n' "$rc" >"$round/target-status.txt"
     for name in "${files[@]}"; do transfers+=("$target:$remote/$name"); done
     scp -q "${ssh_opts[@]}" "${transfers[@]}" "$round/" 2>>"$round/target.log" || true
+    if (( kernel_trace )); then
+        for name in "${trace_files[@]}"; do
+            scp -q "${ssh_opts[@]}" "$target:$remote/$name" "$round/$name" 2>>"$round/target.log" || true
+        done
+        if [[ ! -s "$round/trace.kev" ]] || ! grep -Fxq \
+                'wait_exit=0 before_exit=0 after_exit=0 stop_exit=0 tracelogger_exit=0' "$round/trace-status.txt"; then
+            printf 'Incomplete ring trace for %s\n' "$run_id" >&2
+            result=1
+        fi
+    fi
     "$python" "$integration/check-m3.py" "$round" >"$round/timing.txt" 2>&1 || timing=$?
     "$python" "$fixture/assess-adcs.py" "$training" "$round" >"$round/adcs.json" 2>"$round/adcs.err" || assessment=$?
     if (( timing == 2 )); then
@@ -258,7 +303,33 @@ run_seed() {
     fi
 }
 
-if [[ "$mode" == adcs-pilot ]]; then
+if [[ "$mode" == adcs-pair ]]; then
+    printf 'pair\tseed\tfirst\tq1\tq2\tslm_config\n' >"$run/pairs.tsv"
+    for ((pair = 1; pair <= pairs; ++pair)); do
+        seed=$((3001 + (pair - 1) % 4))
+        block="$(printf '%03d' "$pair")"
+        groups=(q1 q2)
+        if (( pair % 2 == 0 )); then groups=(q2 q1); fi
+        for group in "${groups[@]}"; do
+            repair=restart
+            if [[ "$group" == q2 ]]; then repair=none; fi
+            run_scenario "$block-$group" "$seed" "$group" crash learned "$repair"
+        done
+        q1="$block-q1"
+        q2="$block-q2"
+        config_status=PASS
+        # As in M3, verify that the advisor repair mode is the only XML difference.
+        if ! grep -Fq '<SLM:repair backoff="1">restart</SLM:repair>' "$run/$q1/m3-slm.xml" ||
+           ! grep -Fq '<SLM:repair backoff="1">none</SLM:repair>' "$run/$q2/m3-slm.xml" ||
+           ! sed 's/backoff="1">none</backoff="1">restart</' "$run/$q2/m3-slm.xml" |
+                cmp -s "$run/$q1/m3-slm.xml" -; then
+            config_status=FAIL
+            result=1
+        fi
+        printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$block" "$seed" "${groups[0]}" "$q1" "$q2" "$config_status" \
+            >>"$run/pairs.tsv"
+    done
+elif [[ "$mode" == adcs-pilot ]]; then
     run_seed 2001
     run_scenario 2001-q1-01 2001 q1 crash learned
 else
@@ -267,6 +338,10 @@ else
         seed=$((3001 + (round - 1) % 4))
         run_scenario "$(printf '%s-q1-%02d' "$seed" "$round")" "$seed" q1 crash learned
     done
+fi
+if [[ "$mode" == adcs-pair ]]; then
+    "$python" "$fixture/fault-report.py" "$run" >"$run/fault-report.md" || result=1
+    printf 'ADCS fault benchmark report: %s\n' "$run/fault-report.md"
 fi
 cat "$run/results.tsv"
 printf 'M4 ADCS results: %s\n' "$run/results.tsv"
