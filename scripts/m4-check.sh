@@ -13,6 +13,7 @@ usage() {
 if [[ $# == 1 && $1 == --help ]]; then usage; exit 0; fi
 if [[ $# -lt 2 || $# -gt 3 ]]; then usage >&2; exit 2; fi
 case "$2:$#" in adcs-pilot:2|adcs:2|opssat:2|opssat:3) ;; *) usage >&2; exit 2 ;; esac
+exec </dev/null
 : "${QNX_HOST:?Source the QNX SDP environment first}"
 : "${QNX_TARGET:?Source the QNX SDP environment first}"
 sysroot="$(realpath -e "$1")"
@@ -137,9 +138,13 @@ ssh_opts=(-i "$key" -o BatchMode=yes -o ConnectTimeout=4 -o StrictHostKeyCheckin
           -o "UserKnownHostsFile=$run/known_hosts")
 target=
 remote=
+guest_logs=()
 cleanup() {
     if [[ "$remote" =~ ^/tmp/fprime-m3\.[a-zA-Z0-9]+$ ]]; then
-        ssh "${ssh_opts[@]}" "$target" "rm -r '$remote'" </dev/null >>"$run/cleanup.log" 2>&1 || true
+        if (( ${#guest_logs[@]} )); then
+            ssh "${ssh_opts[@]}" "$target" "rm -f ${guest_logs[*]}" >>"$run/cleanup.log" 2>&1 || true
+        fi
+        ssh "${ssh_opts[@]}" "$target" "rm -r '$remote'" >>"$run/cleanup.log" 2>&1 || true
     fi
     if qnx_vm_running "$image"; then
         (cd "$image" && mkqnximage --stop) >>"$run/cleanup.log" 2>&1 || true
@@ -195,7 +200,17 @@ scp -q "${ssh_opts[@]}" "$sdk/usr/lib/libexpat.so.2" "$sdk/lib/libsecpol.so.1" "
 
 result=0
 printf 'run_id\tgroup\tseed\ttarget_exit\ttiming_exit\tadcs_exit\tverdict\n' >"$run/results.tsv"
-files=(flight.csv flight.log flight.err advisor.log advisor.err link.csv slm.log death.csv death.log m3-slm.xml)
+files=(flight.csv flight.log flight.err advisor.log advisor.err link.csv slm.log death.csv death.log)
+# Keep trace writes off the virtual disk while retaining the same application and SLM paths.
+stage_logs="set -e"
+for name in "${files[@]}"; do
+    path="/dev/shmem/fprime-m4-${remote##*.}-$name"
+    guest_logs+=("$path")
+    stage_logs+=$'\n'": > '$path'; ln -s '$path' '$remote/$name'"
+done
+ssh "${ssh_opts[@]}" "$target" "$stage_logs" >"$run/trace-staging.log" 2>&1 ||
+    { cat "$run/trace-staging.log" >&2; exit 1; }
+files+=(m3-slm.xml)
 run_scenario() {
     local run_id="$1" seed="$2" group="$3" scenario="$4" advisor="$5"
     local round="$run/$run_id" rc=0 timing=0 assessment=0 verdict=PASS name
@@ -206,7 +221,8 @@ run_scenario() {
         'repair=restart' 'cycles=230' 'period_ns=20000000' 'deadline_ns=20000000' 'freshness_ns=250000000' \
         'fallback_limit_ns=300000000' 'q1_rejoin_limit_ns=1800000000' 'min_warmup_cycles=40' \
         'injection_cycle=55' 'angle_limit_deg=2' 'stable_cycles=20' 'exit_observer=procmgr' \
-        'workload=seeded-adcs' 'crash_signal=SIGKILL' 'slm_rate=2/min' 'slm_backoff_s=1' >"$round/config.txt"
+        'workload=seeded-adcs' 'trace_storage=qnx-shmem' 'crash_signal=SIGKILL' 'slm_rate=2/min' \
+        'slm_backoff_s=1' >"$round/config.txt"
     timeout -k 5s 28s ssh "${ssh_opts[@]}" "$target" \
         "$target_environment sh '$remote/run-m3-target.sh' '$remote' '$scenario' restart '$seed' '$advisor'" \
         >"$round/target.log" 2>&1 || rc=$?

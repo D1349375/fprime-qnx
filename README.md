@@ -110,7 +110,8 @@ author's test set is used after preprocessing, weights, and the threshold are fr
 Both commands write `replay/comparison.csv` with one row per expected case. `replay/summary.txt`
 reports inference failures and score and label differences using the full held-out
 denominator, as well as segment classification metrics and inference latency.
-ADCS writes `results.tsv`, the target traces, and per-run timing and recovery reports.
+ADCS records target traces in guest shared memory during each flight. It exports them with
+`results.tsv` and the per-run timing and recovery reports.
 
 ## Project documents
 
