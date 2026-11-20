@@ -77,6 +77,7 @@ class GateExercise {
 }  // namespace
 
 int main(int argc, char** argv) {
+    const auto mainEntry = M2::monotonicNs();
     Os::init();
     M2::Options options;
     if (!M2::parseOptions(argc, argv, false, options)) {
@@ -114,8 +115,8 @@ int main(int argc, char** argv) {
     std::signal(SIGTERM, stopAdvisor);
     const auto client = M2::monotonicNs();
     const auto pid = static_cast<std::uint64_t>(getpid());
-    std::printf("READY pid=%" PRIu64 " transport=%s client=%" PRIu64 "\n",
-                pid, M2::transportName(options.transport), client);
+    std::printf("READY pid=%" PRIu64 " transport=%s client=%" PRIu64 " main_entry_ns=%" PRIu64 "\n",
+                pid, M2::transportName(options.transport), client, mainEntry);
     std::fflush(stdout);
 
     const bool legacy = options.scenario == M2::Scenario::Legacy;

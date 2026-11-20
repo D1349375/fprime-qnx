@@ -32,14 +32,19 @@ def csv_rows(path, types):
             yield row
 
 
-def metrics(values):
-    if not values:
-        return "unavailable"
+def percentiles(values):
     values = sorted(values)
-    return (
-        f"p50={values[math.ceil(len(values)*0.50)-1]} "
-        f"p99={values[math.ceil(len(values)*0.99)-1]} max={values[-1]}"
-    )
+    if not values:
+        return {}
+    return {
+        "p50": values[math.ceil(len(values)*0.50)-1],
+        "p99": values[math.ceil(len(values)*0.99)-1],
+        "max": values[-1],
+    }
+
+
+def metrics(values):
+    return " ".join(f"{name}={value}" for name, value in percentiles(values).items()) or "unavailable"
 
 
 def bounded(name, earliest, latest, outcome, limit, failures):
@@ -65,14 +70,7 @@ def angle_error(row):
     return math.degrees(math.acos(max(-1.0, min(1.0, cosine))))
 
 
-def assess(directory):
-    config = dict(line.split("=", 1) for line in (directory / "config.txt").read_text().splitlines())
-    group = config["group"]
-    advisor_expected = group not in {"fdir_normal", "fdir_recovery"}
-    cycles, period, deadline, freshness = (
-        int(config[name]) for name in ("cycles", "period_ns", "deadline_ns", "freshness_ns")
-    )
-    print(f"run_id={config['run_id']} group={group} cycles={cycles} period_ns={period} deadline_ns={deadline}")
+def read_flight(directory, cycles, period):
     flight = (directory / "flight.log").read_text()
     ready = only_line(flight, "READY ")
     stats = only_line(flight, "SUMMARY ")
@@ -82,7 +80,6 @@ def assess(directory):
             int(stats["expected"]) != cycles or int(ready["period_ns"]) != period or int(stats["exit_ok"]) != 1):
         raise Incomplete("Guest command, record integrity, or run configuration failed")
     t0 = int(ready["first_release_ns"])
-    end = t0 + (cycles - 1) * period + deadline
     records = list(csv_rows(directory / "flight.csv", {
         **dict.fromkeys(("cycle_id", "release_ns", "start_ns", "finish_ns", "valid", "submitted", "fdir",
                          "rejoin", "isolated", "excluded", "sensor_fault", "advisor_session", "checked_session",
@@ -93,18 +90,27 @@ def assess(directory):
     if not records or records[-1]["cycle_id"] != int(stats["last_cycle"]):
         raise Incomplete("CSV transmission is incomplete")
     releases = set(range(1, cycles + 1))
-    started, finished = [], []
-    late = 0
     for row in records:
         cycle, release, start, finish = (row[key] for key in ("cycle_id", "release_ns", "start_ns", "finish_ns"))
         if cycle not in releases or release != t0 + (cycle - 1) * period or not release <= start <= finish:
             raise Incomplete(f"Cycle {cycle} is duplicated or inconsistent with the timing contract")
         releases.remove(cycle)
-        started.append(start - release)
-        if row["submitted"]:
-            finished.append(finish - release)
-        if not row["submitted"] or finish - release > deadline:
-            late += 1
+    return ready, stats, records, releases
+
+
+def assess(directory):
+    config = dict(line.split("=", 1) for line in (directory / "config.txt").read_text().splitlines())
+    group = config["group"]
+    advisor_expected = group not in {"fdir_normal", "fdir_recovery"}
+    cycles, period, deadline, freshness = (
+        int(config[name]) for name in ("cycles", "period_ns", "deadline_ns", "freshness_ns")
+    )
+    print(f"run_id={config['run_id']} group={group} cycles={cycles} period_ns={period} deadline_ns={deadline}")
+    ready, stats, records, releases = read_flight(directory, cycles, period)
+    end = int(ready["first_release_ns"]) + (cycles - 1) * period + deadline
+    started = [row["start_ns"] - row["release_ns"] for row in records]
+    finished = [row["finish_ns"] - row["release_ns"] for row in records if row["submitted"]]
+    late = sum(delay > deadline for delay in finished) + len(records) - len(finished)
     misses = late + len(releases)
     print(f"start_minus_release_ns {metrics(started)}")
     print(f"finish_minus_release_ns {metrics(finished)}")
@@ -212,7 +218,11 @@ def assess(directory):
                     require(fallback["fallback"] == "RESULT_TIMEOUT" and last_sample > 0 and
                             fallback["start_ns"] - last_sample > freshness, "FDIR did not follow the result deadline")
                 print(f"fallback_reason={fallback['fallback']} fdir_cycle={commit['cycle_id']} "
-                      f"last_advisor_sample_ns={last_sample} last_sample_expiry_ns={last_sample + freshness}")
+                      f"last_advisor_sample_ns={last_sample} last_sample_expiry_ns={last_sample + freshness} "
+                      f"fallback_transition_ns={fallback['fallback_ns']} fdir_commit_ns={commit['finish_ns']}")
+                if group == "q2":
+                    require(all(row["fdir"] for row in records if row["cycle_id"] >= commit["cycle_id"]),
+                            "Q2 stopped using FDIR after takeover")
             else:
                 failures.append("FDIR transition has no committed output")
 

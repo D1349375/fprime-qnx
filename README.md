@@ -113,6 +113,30 @@ denominator, as well as segment classification metrics and inference latency.
 ADCS records target traces in guest shared memory during each flight. It exports them with
 `results.tsv` and the per-run timing and recovery reports.
 
+### Run the ADCS fault benchmark
+
+In the M4 environment above, from an initialized checkout, run the paired experiment.
+
+~~~bash
+scripts/m4-check.sh "$HOME/e6-qnx-x86_64" adcs-pair
+~~~
+
+The default is ten interleaved pairs. Set the optional third argument for a shorter run.
+Each pair runs the same held-out seed and frozen FFN in one guest with fresh FlightSW and
+advisor processes. The SLM XML check verifies the advisor's repair policy in both arms.
+The fixed crash trigger is the first eligible snapshot from cycle 55 onward. The report
+shows the actual snapshot and injection offset for each arm.
+
+Add `M4_KERNEL_TRACE=1` before the command to capture the QNX memory ring in both arms.
+The ring is exported after each scenario. Use the SDP's `traceprinter` with
+`-n -p '%c|%C|%Z|%z|' -f trace.kev` to decode it. Each trace includes two guest clock anchors.
+
+Open `fault-report.md` in the printed evidence directory. It links to each round's
+configuration, original checker output, raw guest timeline, available trace, SDK
+packages and source and model revisions. The command returns a nonzero status if
+a verdict fails, a pair's XML differs outside the repair field, or a requested trace
+is incomplete. Keep evidence local according to §9.4 of the [project plan](docs/專案規劃書.md).
+
 ## Project documents
 
 | Document | Contents |
