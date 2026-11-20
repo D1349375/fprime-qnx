@@ -1,6 +1,6 @@
 # ASUS VivoBook X409JP setup · 環境建置
 
-This guide sets up the W1 development environment for an Intel Core i5-1035G1 laptop with 8 GB RAM and Windows 11 Home. Ubuntu 24.04 runs under WSL2. QEMU uses KVM to boot a headless x86-64 QNX 8.0 image. The SDK target is QNX SDP 8.0.5, with the installed SDK build recorded alongside the test results.
+This guide sets up the W1 development environment for an Intel Core i5-1035G1 laptop with 8 GB RAM and Windows 11 Home. Ubuntu 24.04 runs under WSL2. QEMU uses KVM to boot a headless x86-64 QNX 8.0 image. The project was validated with QNX SDP 8.0.6.
 
 這台機器的 C 槽是 SSD，規劃開始時約有 18 GB 可用。D 槽是 HDD，規劃開始時約有 774 GB 可用。先把 Ubuntu 的虛擬磁碟放 D 槽，程式碼、SDK 和映像都放在 Ubuntu 的 Linux 檔案系統。實際剩餘空間以本機查詢為準。MX330 可用於後續主機端實驗，本指南的編譯及 QNX 測試使用 CPU。
 
@@ -79,7 +79,7 @@ qemu-system-x86_64 -accel kvm -cpu host -smp 1 -m 128M \
 ## E3. Install QNX SDP · 安裝 Linux 工具鏈
 
 1. Obtain the non-commercial QNX SDP 8.0 license through myQNX and follow the official license activation steps.
-2. Install the **Linux-host** QNX Software Center inside Ubuntu. Use it to install the QNX SDP 8.0 toolchain with x86-64 target support. Choose the planned 8.0.5 update when available for the account, and record the installed build.
+2. Install the **Linux-host** QNX Software Center inside Ubuntu. Use it to install the **QNX SDP 8.0.6** toolchain with x86-64 target support. Record the installed build alongside your validation results.
 3. Open Bash and source the SDK environment file. Adjust `$HOME/qnx800` if the SDK was installed in another directory. Repeat this in new Bash sessions before running QNX commands.
 
 ```bash
