@@ -18,7 +18,7 @@ scripts/clean-rebuild.sh
 
 The script clones the current checkout's committed revision into a new directory, initializes the pinned submodules, builds `Ref`, creates and boots an x86-64 QNX image, and runs the GDS check. It prints the directory containing the source revisions, build logs, and target evidence. [QNX mkqnximage reference](https://www.qnx.com/developers/docs/8.0/com.qnx.doc.neutrino.utilities/topic/m/mkqnximage.html)
 
-For the upstream OSAL suites, initialize the submodules with `git submodule update --init --recursive` and run `scripts/osal-check.sh` from the same revision. Each run defaults to a new x86-64 QNX guest with extra space for death-test core files. Set `QNX_IMAGE_DIR` and `QNX_SSH_KEY` to use your own provisioned image with sufficient space. The OSAL log directory contains the suite results and target output.
+For the upstream OSAL suites, initialize the submodules with `git submodule update --init --recursive` and run `scripts/osal-check.sh`. It applies the [test portability patch](adoption/osal-test-portability.patch) to a staged copy of the pinned framework and provisions a new x86-64 QNX guest. Evidence and the default build cache go under `TMPDIR` or `/tmp`. Set `QNX_IMAGE_DIR` and `QNX_SSH_KEY` to use a provisioned image with sufficient space. `OSAL_BUILD_DIR` accepts a cache produced by the same staged test sources.
 
 ## Reproduce M2
 

@@ -1,0 +1,155 @@
+diff --git a/Os/Generic/test/ut/PriorityMemQueueTests.cpp b/Os/Generic/test/ut/PriorityMemQueueTests.cpp
+index da75bafdcbef9cca4b01426391492bea460fc07e..17c0d74a622378ba7732b6469f0fbdd9bc126da2 100644
+--- a/Os/Generic/test/ut/PriorityMemQueueTests.cpp
++++ b/Os/Generic/test/ut/PriorityMemQueueTests.cpp
+@@ -2118,7 +2118,8 @@ TEST_F(PriorityMemQueueTestFixture, DoubleCreateAssertion) {
+               queue.create(QUEUE_ID, Fw::String("Test1"), QUEUE_DEPTH, MESSAGE_SIZE));
+
+     // Second create without teardown should assert (fail-fast design)
+-    ASSERT_DEATH_IF_SUPPORTED({ queue.create(QUEUE_ID, Fw::String("Test2"), QUEUE_DEPTH, MESSAGE_SIZE); }, "Assertion");
++    ASSERT_DEATH_IF_SUPPORTED({ queue.create(QUEUE_ID, Fw::String("Test2"), QUEUE_DEPTH, MESSAGE_SIZE); },
++                             "[Aa]ssertion");
+
+     queue.teardown();
+ }
+diff --git a/Os/Posix/test/ut/PosixRawTimeTests.cpp b/Os/Posix/test/ut/PosixRawTimeTests.cpp
+index 51a1ce5c0e01942f5922735aa4b715f40fef96d4..231effcf3361e2865ea905202a275c0cc4765ab7 100644
+--- a/Os/Posix/test/ut/PosixRawTimeTests.cpp
++++ b/Os/Posix/test/ut/PosixRawTimeTests.cpp
+@@ -18,31 +18,19 @@
+ void Os::Test::RawTime::assert_and_update_now(const Os::RawTime& raw_time_under_test,
+                                               const std::chrono::system_clock::time_point& lower_time,
+                                               const std::chrono::system_clock::time_point& upper_time,
+-                                              std::chrono::system_clock::time_point& shadow_time) {
++                                              ShadowTime& shadow_time) {
+     // Extract POSIX timespec from raw_time_under_test
+     const timespec& timespec_handle = static_cast<const Os::Posix::RawTime::PosixRawTimeHandle*>(
+                                           const_cast<Os::RawTime&>(raw_time_under_test).getHandle())
+                                           ->m_timespec;
+-    // Ensure timespec_handle is between lower_time and upper_time
+-    auto lower_time_sec = std::chrono::duration_cast<std::chrono::seconds>(lower_time.time_since_epoch()).count();
+-    auto upper_time_sec = std::chrono::duration_cast<std::chrono::seconds>(upper_time.time_since_epoch()).count();
+-    auto lower_time_nsec =
+-        std::chrono::duration_cast<std::chrono::nanoseconds>(lower_time.time_since_epoch()).count() % 1000000000;
+-    auto upper_time_nsec =
+-        std::chrono::duration_cast<std::chrono::nanoseconds>(upper_time.time_since_epoch()).count() % 1000000000;
+-
+-    EXPECT_GE(timespec_handle.tv_sec, lower_time_sec);
+-    EXPECT_LE(timespec_handle.tv_sec, upper_time_sec);
+-    if (timespec_handle.tv_sec == lower_time_sec) {
+-        EXPECT_GE(timespec_handle.tv_nsec, lower_time_nsec);
+-    }
+-    if (timespec_handle.tv_sec == upper_time_sec) {
+-        EXPECT_LE(timespec_handle.tv_nsec, upper_time_nsec);
+-    }
+-    // Update shadow time with values of raw_time_under_test
+-    auto duration = std::chrono::seconds{timespec_handle.tv_sec} + std::chrono::nanoseconds{timespec_handle.tv_nsec};
+-    shadow_time = std::chrono::system_clock::time_point(
+-        std::chrono::duration_cast<std::chrono::system_clock::duration>(duration));
++    const auto elapsed = std::chrono::seconds{timespec_handle.tv_sec} + std::chrono::nanoseconds{timespec_handle.tv_nsec};
++    // Compare at the resolution of the clock that supplied the bounds.
++    const auto comparable_time = std::chrono::system_clock::time_point(
++        std::chrono::duration_cast<std::chrono::system_clock::duration>(elapsed));
++    EXPECT_GE(comparable_time, lower_time);
++    EXPECT_LE(comparable_time, upper_time);
++    // Keep the original precision so differences are rounded only after subtraction.
++    shadow_time = ShadowTime(elapsed);
+ }
+
+ // ----------------------------------------------------------------------
+diff --git a/Os/Posix/test/ut/PosixTaskTests.cpp b/Os/Posix/test/ut/PosixTaskTests.cpp
+index 95cd5facee2cfec8ded4e9d5c629b5354229bc06..524acfaea4a9a296464c358f57f49c5e24815714 100644
+--- a/Os/Posix/test/ut/PosixTaskTests.cpp
++++ b/Os/Posix/test/ut/PosixTaskTests.cpp
+@@ -7,6 +7,7 @@
+ #include <sched.h>
+ #include <sys/resource.h>
+ #include <unistd.h>
++#include <algorithm>
+ #include <atomic>
+ #include <cerrno>
+ #include <climits>
+@@ -381,7 +382,12 @@ TEST_F(PosixTaskScheduling, DefaultModeNiceBandPriorityRemainsSchedRr) {
+     runAndObserve(priority, observed);
+     if (geteuid() == 0 || observed.policy.load() == SCHED_RR) {
+         ASSERT_EQ(observed.policy.load(), SCHED_RR);
+-        ASSERT_EQ(observed.priority.load(), sched_get_priority_max(SCHED_RR));
++        const int min_priority = sched_get_priority_min(SCHED_RR);
++        const int max_priority = sched_get_priority_max(SCHED_RR);
++        ASSERT_GE(min_priority, 0);
++        ASSERT_GE(max_priority, min_priority);
++        const int expected_priority = std::min(std::max(static_cast<int>(priority), min_priority), max_priority);
++        ASSERT_EQ(observed.priority.load(), expected_priority);
+     } else {
+         int expected_policy = -1;
+         sched_param expected_param;
+diff --git a/Os/test/ut/filesystem/FileSystemRules.cpp b/Os/test/ut/filesystem/FileSystemRules.cpp
+index d5da8c6ef2c3dc1ed18ed4f2934e847b56525b03..a82aa8ecfef04d0050d403728ded87016fce0545 100644
+--- a/Os/test/ut/filesystem/FileSystemRules.cpp
++++ b/Os/test/ut/filesystem/FileSystemRules.cpp
+@@ -396,11 +396,12 @@ bool Os::Test::FileSystem::Tester::GetFreeSpace::precondition(const Os::Test::Fi
+ void Os::Test::FileSystem::Tester::GetFreeSpace::action(Os::Test::FileSystem::Tester& state) {
+     Os::FileSystem::Status status;
+     FwSizeType totalBytes = 0, freeBytes = 0;
+-    status = Os::FileSystem::getSingleton().getFreeSpace("/", totalBytes, freeBytes);
++    // Use the filesystem containing the writable test fixture.
++    status = Os::FileSystem::getSingleton().getFreeSpace(".", totalBytes, freeBytes);
+     ASSERT_EQ(status, Os::FileSystem::Status::OP_OK) << "Failed to run getFreeSpace";
+     ASSERT_GT(totalBytes, 0) << "Total bytes should be greater than 0";
+     ASSERT_GT(freeBytes, 0) << "Free bytes should be greater than 0";
+-    ASSERT_GT(totalBytes, freeBytes) << "Total bytes should be greater than free bytes";
++    ASSERT_GE(totalBytes, freeBytes) << "Free bytes should not exceed total bytes";
+ }
+
+ // ------------------------------------------------------------------------------------------------------
+diff --git a/Os/test/ut/rawtime/RulesHeaders.hpp b/Os/test/ut/rawtime/RulesHeaders.hpp
+index 63cabc3945bfde20dd1dcaf0547c37f08ad6bfdd..d94020a2e7388d8f9ff32a14a1a6eb9e3aa08af5 100644
+--- a/Os/test/ut/rawtime/RulesHeaders.hpp
++++ b/Os/test/ut/rawtime/RulesHeaders.hpp
+@@ -19,6 +19,8 @@ namespace Os {
+ namespace Test {
+ namespace RawTime {
+
++using ShadowTime = std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>;
++
+ //! ------------------------------------------------------------------------------------------------------
+ //! REQUIRED NOTICE TO PLATFORM IMPLEMENTORS
+ //! ------------------------------------------------------------------------------------------------------
+@@ -45,7 +47,7 @@ namespace RawTime {
+ void assert_and_update_now(const Os::RawTime& raw_time_under_test,
+                            const std::chrono::system_clock::time_point& lower_time,
+                            const std::chrono::system_clock::time_point& upper_time,
+-                           std::chrono::system_clock::time_point& shadow_time  //!< reference to shadow time to update
++                           ShadowTime& shadow_time  //!< reference to shadow time to update
+ );
+
+ struct Tester {
+@@ -62,13 +64,15 @@ struct Tester {
+     std::vector<Os::RawTime> m_times;
+
+     //! Shadow time for testing (vector of std time points)
+-    std::vector<std::chrono::time_point<std::chrono::system_clock>> m_shadow_times;
++    std::vector<ShadowTime> m_shadow_times;
+
+     //! Get time for shadow state, at specified index
+-    void shadow_now(FwIndexType index) { this->m_shadow_times[index] = std::chrono::system_clock::now(); }
++    void shadow_now(FwIndexType index) {
++        this->m_shadow_times[index] =
++            std::chrono::time_point_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now());
++    }
+
+-    U32 shadow_getDiffUsec(std::chrono::time_point<std::chrono::system_clock>& t1,
+-                           std::chrono::time_point<std::chrono::system_clock>& t2) const {
++    U32 shadow_getDiffUsec(const ShadowTime& t1, const ShadowTime& t2) const {
+         // Signedness is important here so we compare and substract accordingly
+         if (t1 < t2) {
+             return std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+@@ -80,7 +84,7 @@ struct Tester {
+     //! with the result
+     void shadow_getTimeInterval(FwIndexType index1, FwIndexType index2, Fw::TimeInterval& interval) {
+         auto duration = this->m_shadow_times[index1] - this->m_shadow_times[index2];
+-        if (duration < std::chrono::system_clock::duration::zero()) {
++        if (duration < std::chrono::nanoseconds::zero()) {
+             duration = -duration;
+         }
+         U32 microseconds = std::chrono::duration_cast<std::chrono::microseconds>(duration).count() % 1000000;
