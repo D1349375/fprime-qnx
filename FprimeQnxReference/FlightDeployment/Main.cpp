@@ -125,6 +125,13 @@ void runLink(M2::Transport& transport,
     std::uint64_t acceptedCycle = 0;
     M2::Snapshot latest{};
     M2::Snapshot issued{};
+    const auto refreshSnapshot = [&handoff, &latest]() {
+        for (unsigned i = 0; i < M2::SnapshotCapacity; ++i) {
+            if (!handoff.snapshots.pop(latest)) {
+                break;
+            }
+        }
+    };
     // Keep a cycle-addressed sample long enough to distinguish stale from unissued.
     std::array<M2::Snapshot, 32> issuedHistory{};
     std::uint64_t epoch = 0;
@@ -138,6 +145,11 @@ void runLink(M2::Transport& transport,
             advisorPid = 0;
         }
         if (!received) {
+            if (m3) {
+                // Keep the latest sample during advisor startup or absence. A
+                // full drop-newest queue otherwise retains only old snapshots.
+                refreshSnapshot();
+            }
             continue;
         }
         if (!hub.unwrap(frame, request)) {
@@ -167,11 +179,7 @@ void runLink(M2::Transport& transport,
                 handoff.session.store(session, std::memory_order_release);
                 log(M2::monotonicNs(), "SESSION", advisorPid, session, 0, 0);
             }
-            for (unsigned i = 0; i < M2::SnapshotCapacity; ++i) {
-                if (!handoff.snapshots.pop(latest)) {
-                    break;
-                }
-            }
+            refreshSnapshot();
             const auto now = M2::monotonicNs();
             if (pause != nullptr && latest.cycle >= M2::InjectionCycle &&
                 pause->begin.load(std::memory_order_relaxed) == 0) {
