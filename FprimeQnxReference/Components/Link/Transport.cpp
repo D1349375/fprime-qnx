@@ -66,6 +66,10 @@ bool Transport::exchange(const HubFrame& request, HubFrame& response) {
     return send(request) && receive(response);
 }
 
+bool Transport::waitForPendingUnblock() {
+    return m_kind == TransportKind::Qnx && m_qnx.waitForPendingUnblock();
+}
+
 void Transport::reject() {
     if (m_kind == TransportKind::Qnx) {
         m_qnx.reject();

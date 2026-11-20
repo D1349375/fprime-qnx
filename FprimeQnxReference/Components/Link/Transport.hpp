@@ -24,6 +24,7 @@ class Transport {
     bool receive(HubFrame& frame);
     bool send(const HubFrame& frame);
     bool exchange(const HubFrame& request, HubFrame& response);
+    bool waitForPendingUnblock();
     void reject();
 
   private:

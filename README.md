@@ -1,6 +1,6 @@
 # F Prime on QNX
 
-This project ports NASA/JPL F Prime to QNX 8.0 for the QNX Global Hackathon **Open-Source Contribution & Ports** category. The port provides a reusable platform library. Upstream Ref demonstrates adoption, and a separate simulated ADCS reference deployment exercises two-process communication, timing, and advisor recovery. The deterministic recovery gate and ML evaluation are planned milestones.
+This project ports NASA/JPL F Prime to QNX 8.0 for the QNX Global Hackathon **Open-Source Contribution & Ports** category. The port provides a reusable platform library. Upstream Ref demonstrates adoption, and a separate simulated ADCS reference deployment exercises two-process communication, timing, and advisor recovery. A deterministic advisor exercises the recovery gate and fault handling. See the implementation log for validation status.
 
 ## Bring-up status
 
@@ -33,7 +33,40 @@ scripts/m2-check.sh slm
 
 The `udp` and `qnx` checks delay the advisor to fill the bounded snapshot queue, then stop it during the 200-cycle flight run. The `slm` check uses the QNX IPC transport and kills the supervised advisor once. It checks for a new advisor process and session, expiry of old advice, and an uninterrupted flight trace. The harness stages the SLM utilities and libraries from the installed QNX SDK on the test guest. It renders a test copy of the [SLM template](FprimeQnxReference/qnx/m2-slm.xml.in) with process criticality disabled so the test can stop flight cleanly. [QNX SLM reference](https://www.qnx.com/developers/docs/8.0/com.qnx.doc.neutrino.utilities/topic/s/slm.html)
 
-Each command prints the evidence directory. `flight.csv` contains cycle ID, scheduled release, actual start, and the time at which FlightSW updates its internal sun estimate. All three timestamps use the guest's monotonic clock. `summary.txt` reports time from release to that estimate update and observed misses against the 20 ms period. The iteration log records the initial QEMU/KVM validation and the v0.3 clean regression. ML inference, fault-injection comparisons, and qualification under load are later milestones. [M2 results](docs/實作迭代紀錄.md#i-12--v03-整合基準-qnx-客體重跑)
+Each command prints the evidence directory. `flight.csv` contains cycle ID, scheduled release, actual start, and the time at which FlightSW updates its internal sun estimate. All three timestamps use the guest's monotonic clock. `summary.txt` reports time from release to that estimate update and observed misses against the 20 ms period. The iteration log records the initial QEMU/KVM validation and the v0.3 clean regression. [M2 results](docs/實作迭代紀錄.md#i-12--v03-整合基準-qnx-客體重跑)
+
+## Reproduce M3 and E6
+
+Use Ubuntu 24.04 with the F Prime virtual environment and QNX SDP 8.0.6. Initialize the pinned submodules and reuse
+the M1 libvirt network setup. Run one pilot round before the full target validation.
+
+```bash
+git submodule update --init --recursive
+scripts/m3-check.sh 1
+scripts/m3-check.sh
+```
+
+M3 uses a deterministic advisor and simulated coarse sun sensors. Each run checks a no-fault baseline, SLM restart
+(Q1), SLM repair disabled (Q2), missing output with heartbeat, invalid advice, insufficient sensor geometry,
+a held native IPC reply with its unblock pulse, and successful sensor isolation. Q1 and Q2 use the same guest and
+binaries. The harness prints its evidence directory and writes the per-round verdicts to `results.tsv`. Use `python3 FprimeQnxReference/test/int/check-m3.py RUN_DIR`
+to recompute a single round from its config, flight and IPC CSVs, and advisor log. Q1 and Q2 additionally capture
+QNX process-manager death notifications in `death.csv`. The observer timestamps pulse reception independently of the
+flight and IPC workers. That timestamp bounds the exit time from above. See
+[M3 decisions](docs/決策與變更紀錄.md#d21--m3-飛行提交與故障驗收) for the pilot contract.
+
+E6 runs a separate C++17 mlpack 4.7 FFN on Linux and QNX x86-64. Install host mlpack 4.7, Armadillo, and OpenBLAS
+development packages. Prepare a complete x86-64 APK sysroot with its QNX core overlay and mlpack, Armadillo, and
+OpenBLAS development packages. Keep the default SDP environment active for guest provisioning.
+[QNX APK sysroot codelab](https://qnx.github.io/codelabs/apk-based-cross-compile/index.html)
+
+```bash
+scripts/e6-check.sh /path/to/qnx-x86_64-apk-sysroot
+```
+
+The E6 runner records the effective package versions, linker and loader evidence, weights hash, and score and label
+comparisons. See the [implementation log](docs/實作迭代紀錄.md#i-13--m3-確定性故障驗收與-e6-入口)
+for current verification status. The target E6 run is pending an x86-64 APK sysroot.
 
 ## Project documents
 

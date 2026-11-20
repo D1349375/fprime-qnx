@@ -30,6 +30,8 @@ WirePacket encode(const Packet& packet) {
     wire[2] = 1;
     wire[3] = static_cast<std::uint8_t>(packet.type);
     wire[4] = packet.flag ? 1 : 0;
+    wire[5] = packet.action;
+    wire[6] = packet.channel;
     write64(wire, 8, packet.client);
     write64(wire, 16, packet.session);
     write64(wire, 24, packet.cycle);
@@ -42,13 +44,18 @@ WirePacket encode(const Packet& packet) {
 
 bool decode(const WirePacket& wire, Packet& packet) {
     if (wire[0] != 'M' || wire[1] != '2' || wire[2] != 1 || wire[4] > 1 ||
-        wire[5] != 0 || wire[6] != 0 || wire[7] != 0 ||
+        wire[7] != 0 ||
         wire[3] < static_cast<std::uint8_t>(MessageType::Request) ||
         wire[3] > static_cast<std::uint8_t>(MessageType::Wait)) {
         return false;
     }
     packet.type = static_cast<MessageType>(wire[3]);
+    if (packet.type != MessageType::Result && (wire[5] != 0 || wire[6] != 0)) {
+        return false;
+    }
     packet.flag = wire[4] != 0;
+    packet.action = wire[5];
+    packet.channel = wire[6];
     packet.client = read64(wire, 8);
     packet.session = read64(wire, 16);
     packet.cycle = read64(wire, 24);
