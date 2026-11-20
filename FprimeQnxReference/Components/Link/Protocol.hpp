@@ -22,6 +22,8 @@ struct Packet {
     std::uint64_t cycle = 0;
     bool flag = false;
     SensorReadings sensors{};
+    std::uint8_t action = 0;
+    std::uint8_t channel = 0;
 };
 
 using WirePacket = std::array<std::uint8_t, 44>;

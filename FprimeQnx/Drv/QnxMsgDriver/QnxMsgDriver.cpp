@@ -13,8 +13,8 @@ namespace {
 constexpr std::uint16_t AppMessage = _IO_MAX + 1;
 constexpr std::uint64_t TimeoutNs = 100000000;
 
-bool setTimeout(int flags) {
-    return TimerTimeout(CLOCK_MONOTONIC, flags, nullptr, &TimeoutNs, nullptr) != -1;
+bool setTimeout(int flags, std::uint64_t timeout = TimeoutNs) {
+    return TimerTimeout(CLOCK_MONOTONIC, flags, nullptr, &timeout, nullptr) != -1;
 }
 
 }  // namespace
@@ -78,6 +78,21 @@ bool QnxMsgDriver::receive(std::uint8_t* payload, std::size_t capacity, std::siz
     std::memcpy(payload, message.data() + sizeof(type), size);
     m_pending = rcvid;
     return true;
+}
+
+bool QnxMsgDriver::waitForPendingUnblock() {
+    constexpr std::uint64_t ProbeTimeoutNs = 10000000;
+    if (m_pending == 0 || !setTimeout(_NTO_TIMEOUT_RECEIVE, ProbeTimeoutNs)) {
+        return false;
+    }
+    _pulse pulse{};
+    if (MsgReceivePulse(m_attach->chid, &pulse, sizeof(pulse), nullptr) != 0) {
+        return false;
+    }
+    if (pulse.code == _PULSE_CODE_DISCONNECT) {
+        ConnectDetach(pulse.scoid);
+    }
+    return pulse.code == _PULSE_CODE_UNBLOCK && pulse.value.sival_int == m_pending;
 }
 
 bool QnxMsgDriver::reply(const std::uint8_t* payload, std::size_t size) {

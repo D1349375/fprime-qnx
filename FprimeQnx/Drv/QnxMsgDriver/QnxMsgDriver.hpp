@@ -19,6 +19,8 @@ class QnxMsgDriver {
 
     bool open(bool server, const char* name);
     bool receive(std::uint8_t* payload, std::size_t capacity, std::size_t& size);
+    //! Wait up to 10 ms for an unblock pulse for the current request.
+    bool waitForPendingUnblock();
     bool reply(const std::uint8_t* payload, std::size_t size);
     void reject();
     bool request(const std::uint8_t* payload,

@@ -31,8 +31,35 @@ qnx_vm_start() {
             return 1
         fi
     fi
-    # Detach the SDK's headless QEMU from the calling WSL session.
-    (cd "$image_dir" && setsid --wait mkqnximage --run=-h) >"$boot_log" 2>&1 < /dev/null
+    local deadline launch_status
+    # The detached launcher can return before QEMU writes its PID file.
+    if (cd "$image_dir" && setsid --wait mkqnximage --run=-h) >"$boot_log" 2>&1 < /dev/null; then
+        deadline=$((SECONDS + 10))
+        while (( SECONDS < deadline )); do
+            qnx_vm_running "$image_dir" && return 0
+            sleep 0.2
+        done
+        qnx_vm_running "$image_dir" && return 0
+        printf 'QEMU did not create a live PID file within 10 seconds: %s/output/qemu.pid\n' \
+            "$image_dir" >>"$boot_log"
+    else
+        launch_status=$?
+        printf 'mkqnximage --run=-h exited with status %s\n' "$launch_status" >>"$boot_log"
+    fi
+
+    # Keep launch and environment diagnostics with this guest's other evidence.
+    {
+        ls -ld /dev/kvm || true
+        if command -v ip >/dev/null 2>&1; then
+            ip -brief link show virbr0 || true
+        fi
+        if [[ -s "$image_dir/output/qemu.out" ]]; then
+            tail -20 "$image_dir/output/qemu.out"
+        fi
+    } >>"$boot_log" 2>&1
+    printf 'QNX guest launch failed. See %s\n' "$boot_log" >&2
+    tail -40 "$boot_log" >&2
+    return 1
 }
 
 qnx_vm_find_guest() {
