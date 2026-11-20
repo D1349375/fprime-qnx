@@ -55,18 +55,24 @@ QNX process-manager death notifications in `death.csv`. The observer timestamps 
 flight and IPC workers. That timestamp bounds the exit time from above. See
 [M3 decisions](docs/決策與變更紀錄.md#d21--m3-飛行提交與故障驗收) for the pilot contract.
 
-E6 runs a separate C++17 mlpack 4.7 FFN on Linux and QNX x86-64. Install host mlpack 4.7, Armadillo, and OpenBLAS
-development packages. Prepare a complete x86-64 APK sysroot with its QNX core overlay and mlpack, Armadillo, and
-OpenBLAS development packages. Keep the default SDP environment active for guest provisioning.
+E6 builds the same C++17 mlpack 4.7 FFN on Linux and QNX x86-64. On Ubuntu 24.04, install the Armadillo,
+OpenBLAS, cereal and ensmallen development packages. Use the upstream mlpack 4.7.0 headers. Set
+`E6_HOST_MLPACK_INCLUDE` if those headers are outside the Linux compiler's default search path.
+[mlpack 4.7.0 source](https://github.com/mlpack/mlpack/tree/d72d9191750cea213c5efadf959d264a7a622420)
+
+Source the installed QNX SDP 8.0.6, put Linux `apk-tools` 3.x on `PATH`, and use the M1 libvirt setup.
+The preparation script builds an isolated sysroot from signed QNX 8.0.3 APKs and links to the installed
+x86-64 SDK headers and libraries. Pass a fresh directory outside the checkout.
 [QNX APK sysroot codelab](https://qnx.github.io/codelabs/apk-based-cross-compile/index.html)
 
 ```bash
-scripts/e6-check.sh /path/to/qnx-x86_64-apk-sysroot
+scripts/e6-prepare-sysroot.sh "$HOME/e6-qnx-x86_64"
+E6_HOST_MLPACK_INCLUDE="$HOME/mlpack-4.7.0/src" scripts/e6-check.sh "$HOME/e6-qnx-x86_64"
 ```
 
-The E6 runner records the effective package versions, linker and loader evidence, weights hash, and score and label
-comparisons. See the [implementation log](docs/實作迭代紀錄.md#i-13--m3-確定性故障驗收與-e6-入口)
-for current verification status. The target E6 run is pending an x86-64 APK sysroot.
+The runner also accepts an existing compatible x86-64 APK sysroot. It records source and package versions,
+loader output, weights hash, and score and label comparisons. On QNX x86-64, the fixed fixture matched
+the Linux results and the independent numerical reference. [E6 verification](docs/實作迭代紀錄.md#i-22--e6-固定權重推論驗收2026-11-20)
 
 ## Project documents
 
