@@ -38,12 +38,14 @@ target_pkg() {
 # pkg-config returns separate compiler options. The sysroot include/library paths
 # are also passed explicitly as in the QNX APK cross-compile codelab.
 read -r -a host_flags <<<"$(pkg-config --cflags --libs armadillo openblas)"
-read -r -a target_flags <<<"$(target_pkg --cflags --libs armadillo openblas)"
+# OpenBLAS publishes a Clang-specific OpenMP flag. QCC/GCC only needs
+# the include and linker settings for this FFN.
+read -r -a target_flags <<<"$(target_pkg --cflags-only-I --libs armadillo openblas)"
 "${CXX:-c++}" -std=c++17 -O2 -DARMA_DONT_USE_OPENMP "${fixture}/ffn-smoke.cpp" \
     -o "$run/ffn-host" "${host_flags[@]}" >"$run/host-build.log" 2>&1
 QNX_TARGET="$sysroot" "$QNX_HOST/usr/bin/q++" -Vgcc_ntox86_64_cxx -std=c++17 -O2 \
     -D_QNX_SOURCE -DARMA_DONT_USE_OPENMP -I"$sysroot/usr/include" -L"$sysroot/usr/lib" \
-    "$fixture/ffn-smoke.cpp" -o "$run/ffn-qnx" "${target_flags[@]}" >"$run/qnx-build.log" 2>&1
+    -Wl,-rpath-link,"$sysroot/usr/lib" "$fixture/ffn-smoke.cpp" -o "$run/ffn-qnx" "${target_flags[@]}" >"$run/qnx-build.log" 2>&1
 
 readelf -hld "$run/ffn-qnx" >"$run/qnx-elf.txt"
 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 "$run/ffn-host" "$fixture/weights.txt" >"$run/host.csv"
