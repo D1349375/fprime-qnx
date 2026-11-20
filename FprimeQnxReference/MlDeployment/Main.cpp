@@ -9,6 +9,12 @@
 #include "MlDeployment/Top/AdvisorTopologyAc.hpp"
 #include "Os/Os.hpp"
 
+#ifdef FPRIME_QNX_ML_ADVISOR
+#include <exception>
+#include "MlDeployment/BiasFeatures.hpp"
+#include "MlDeployment/Ffn.hpp"
+#endif
+
 namespace {
 
 volatile std::sig_atomic_t running = 1;
@@ -74,9 +80,26 @@ int main(int argc, char** argv) {
     Os::init();
     M2::Options options;
     if (!M2::parseOptions(argc, argv, false, options)) {
-        std::fprintf(stderr, "Usage: MlAdvisor [--transport udp|qnx] [--port N] [--m3 SCENARIO]\n");
+        std::fprintf(stderr, "Usage: MlAdvisor [--transport udp|qnx] [--port N] [--m3 SCENARIO] [--model PATH]\n");
         return 2;
     }
+#ifdef FPRIME_QNX_ML_ADVISOR
+    std::unique_ptr<M4::Ffn> model;
+    if (options.model != nullptr) {
+        try {
+            model = std::make_unique<M4::Ffn>(options.model, M4::Features::AdcsBias);
+        } catch (const std::exception& error) {
+            std::fprintf(stderr, "MlAdvisor model: %s\n", error.what());
+            return 1;
+        }
+        std::puts("MODEL mlpack=4.7.0 schema=adcs-bias openblas_threads=1");
+    }
+#else
+    if (options.model != nullptr) {
+        std::fputs("MlAdvisor was built without FFN support\n", stderr);
+        return 2;
+    }
+#endif
     M2::Transport transport;
     if (!transport.open(options.transport, false, options.port)) {
         std::perror("MlAdvisor transport");
@@ -139,6 +162,22 @@ int main(int argc, char** argv) {
                 }
                 M2::Packet result{M2::MessageType::Result, client, snapshot.session, snapshot.cycle,
                                   legacy && snapshot.sensors[0] > 750};
+                double score = -1.0;
+#ifdef FPRIME_QNX_ML_ADVISOR
+                if (model) {
+                    try {
+                        const auto features = M4::biasFeatures(snapshot.sensors);
+                        const auto prediction = model->predict(features.data(), features.size());
+                        score = prediction.score;
+                        result.flag = prediction.alert;
+                        result.action = prediction.alert ? M2::ExcludeSunSensor : 0;
+                    } catch (const std::exception& error) {
+                        // Leave the session without producing a fresh result. SLM may restart the advisor.
+                        std::fprintf(stderr, "MlAdvisor inference: %s\n", error.what());
+                        return 1;
+                    }
+                } else
+#endif
                 if (options.scenario == M2::Scenario::Gate) {
                     exercise.proposal(result);
                 } else if (!legacy && snapshot.sensors[0] > 500) {
@@ -149,8 +188,12 @@ int main(int argc, char** argv) {
                 if (post(transport, hub, result)) {
                     session = snapshot.session;
                     lastCycle = snapshot.cycle;
-                    std::printf("RESULT session=%" PRIu64 " cycle=%" PRIu64 " alert=%d\n",
+                    std::printf("RESULT session=%" PRIu64 " cycle=%" PRIu64 " alert=%d",
                                 session, lastCycle, result.flag ? 1 : 0);
+                    if (score >= 0.0) {
+                        std::printf(" score=%.17g", score);
+                    }
+                    std::putchar('\n');
                     std::fflush(stdout);
                     if (options.scenario == M2::Scenario::Gate && result.action == 0) {
                         exercise.probes(transport, hub, result);

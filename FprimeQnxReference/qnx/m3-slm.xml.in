@@ -2,7 +2,7 @@
 <SLM:system xmlns:SLM="http://www.qnx.com/SLM">
   <SLM:component name="flight">
     <SLM:command>@DIR@/FlightSW</SLM:command>
-    <SLM:args>--transport qnx --m3 @SCENARIO@ --cycles 230 --log @DIR@/flight.csv --link-log @DIR@/link.csv</SLM:args>
+    <SLM:args>--transport qnx --m3 @SCENARIO@ --cycles 230 --log @DIR@/flight.csv --link-log @DIR@/link.csv@FLIGHT_OPTIONS@</SLM:args>
     <SLM:stdout>@DIR@/flight.log</SLM:stdout>
     <SLM:stderr>@DIR@/flight.err</SLM:stderr>
     <SLM:waitfor wait="pathname" polltime="100:5000">/dev/name/local/fprime-m2</SLM:waitfor>
@@ -10,7 +10,7 @@
   </SLM:component>
   <SLM:component name="advisor">
     <SLM:command>@DIR@/MlAdvisor</SLM:command>
-    <SLM:args>--transport qnx --m3 @SCENARIO@</SLM:args>
+    <SLM:args>--transport qnx --m3 @SCENARIO@@ADVISOR_OPTIONS@</SLM:args>
     <SLM:depend state="session">flight</SLM:depend>
     <SLM:stdout iomode="a">@DIR@/advisor.log</SLM:stdout>
     <SLM:stderr iomode="a">@DIR@/advisor.err</SLM:stderr>

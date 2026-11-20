@@ -16,6 +16,8 @@ struct Options {
     const char* log = "flight.csv";
     Scenario scenario = Scenario::Legacy;
     const char* linkLog = "link.csv";
+    std::uint64_t replaySeed = 0;
+    const char* model = nullptr;
 };
 
 inline bool readUnsigned(const char* text, std::uint64_t& value) {
@@ -54,6 +56,10 @@ inline bool parseOptions(int argc, char** argv, bool flight, Options& options) {
         } else if (std::strcmp(key, "--transport") == 0 && std::strcmp(value, "qnx") == 0) {
             options.transport = TransportKind::Qnx;
         } else if (std::strcmp(key, "--m3") == 0 && readScenario(value, options.scenario)) {
+        } else if (flight && std::strcmp(key, "--m4-seed") == 0 && readUnsigned(value, number) && number != 0) {
+            options.replaySeed = number;
+        } else if (!flight && std::strcmp(key, "--model") == 0 && *value != '\0') {
+            options.model = value;
         } else if (flight && std::strcmp(key, "--link-log") == 0 && *value != '\0') {
             options.linkLog = value;
         } else if (flight && std::strcmp(key, "--cycles") == 0 && readUnsigned(value, number)) {
@@ -64,7 +70,8 @@ inline bool parseOptions(int argc, char** argv, bool flight, Options& options) {
             return false;
         }
     }
-    return true;
+    return (options.replaySeed == 0 && options.model == nullptr) || options.scenario == Scenario::Normal ||
+           options.scenario == Scenario::Recovery || options.scenario == Scenario::Crash;
 }
 
 }  // namespace M2

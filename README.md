@@ -74,6 +74,44 @@ The runner also accepts an existing compatible x86-64 APK sysroot. It records so
 loader output, weights hash, and score and label comparisons. On QNX x86-64, the fixed fixture matched
 the Linux results and the independent numerical reference. [E6 verification](docs/實作迭代紀錄.md#i-22--e6-固定權重推論驗收2026-11-20)
 
+## Reproduce M4
+
+Use the M3 QNX x86-64 environment and the E6 APK sysroot. On Linux, use the mlpack 4.7.0
+headers and the E6 Armadillo and OpenBLAS development dependencies. Activate the F Prime
+environment and source the QNX SDP environment before running these commands.
+
+```bash
+python3 -m venv "$HOME/m4-training"
+"$HOME/m4-training/bin/pip" install -r FprimeQnxReference/test/m4/requirements.txt
+export M4_PYTHON="$HOME/m4-training/bin/python"
+export E6_HOST_MLPACK_INCLUDE="$HOME/mlpack-4.7.0/src"
+
+scripts/m4-check.sh "$HOME/e6-qnx-x86_64" adcs-pilot
+scripts/m4-check.sh "$HOME/e6-qnx-x86_64" adcs
+scripts/m4-check.sh "$HOME/e6-qnx-x86_64" opssat
+```
+
+Each invocation creates its own QNX guest and prints an evidence directory under `TMPDIR`
+or `/tmp`. Set `M4_QNX_BUILD_CACHE` to an external directory to reuse the cross-build cache.
+The `opssat` command downloads the pinned Zenodo files, or accepts a directory containing the
+same files and the Zenodo `record.json` as its third argument. The two experiments train
+separate one-hidden-layer FFNs and use the same C++17 inference code on Linux and QNX.
+[OPSSAT-AD v2 dataset](https://doi.org/10.5281/zenodo.15108715)
+
+For ADCS, the runner compares the FDIR control and learned advisor on matching seed,
+bias injection, and Gate conditions. It checks that each accepted live result matches
+the offline replay, then verifies FDIR fallback and SLM restart with the trained advisor.
+The pilot uses validation seeds. The formal run uses held-out seeds and performs ten crash
+trials. The default M3 build continues to use the deterministic advisor. The optional FFN
+build takes `-DFPRIME_QNX_M4_SYSROOT=/path/to/e6-sysroot` and enables `MlAdvisor --model PATH`.
+
+For OPSSAT-AD, only the author's training set supplies fitting and validation data. The
+author's test set is used after preprocessing, weights, and the threshold are frozen.
+Both commands write `replay/comparison.csv` with one row per expected case. `replay/summary.txt`
+reports inference failures and score and label differences using the full held-out
+denominator, as well as segment classification metrics and inference latency.
+ADCS writes `results.tsv`, the target traces, and per-run timing and recovery reports.
+
 ## Project documents
 
 | Document | Contents |
