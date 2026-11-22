@@ -31,9 +31,22 @@ sysroot="$(realpath -e "$1")"
 mode="$2"
 kernel_trace="${M4_KERNEL_TRACE:-0}"
 case "$mode:$kernel_trace" in
-    *:0|adcs-pair:1) ;;
-    *) echo 'M4_KERNEL_TRACE=1 is available for adcs-pair' >&2; exit 2 ;;
+    *:0|adcs-pair:1|adcs-pilot:on-miss|adcs:on-miss|adcs-pair:on-miss) ;;
+    *) echo 'Use M4_KERNEL_TRACE=1 for adcs-pair, or on-miss for an ADCS mode' >&2; exit 2 ;;
 esac
+if [[ "$kernel_trace" == on-miss ]]; then
+    host_tracefs="$(realpath -e "${M4_HOST_TRACEFS:?Set M4_HOST_TRACEFS to a dedicated tracefs instance}")"
+    if [[ -d "$host_tracefs/instances" || "$(stat -f -c %T "$host_tracefs")" != tracefs ||
+          ! -w "$host_tracefs/tracing_on" || ! -w "$host_tracefs/events/sched/sched_switch/filter" ]]; then
+        echo 'Expected a writable dedicated tracefs instance from scripts/m4-tracefs.sh' >&2
+        exit 2
+    fi
+    exec {trace_lock}<"$host_tracefs"
+    flock -n "$trace_lock" || { echo 'The tracefs instance is already in use' >&2; exit 2; }
+fi
+cycles=230
+period_ns=20000000
+deadline_ns=20000000
 sdk="$QNX_TARGET/x86_64"
 python="${M4_PYTHON:-python3}"
 export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 PYTHONDONTWRITEBYTECODE=1
@@ -163,9 +176,9 @@ guest_logs=()
 cleanup() {
     if [[ "$remote" =~ ^/tmp/fprime-m3\.[a-zA-Z0-9]+$ ]]; then
         if (( ${#guest_logs[@]} )); then
-            ssh "${ssh_opts[@]}" "$target" "rm -f ${guest_logs[*]}" >>"$run/cleanup.log" 2>&1 || true
+            timeout -k 2s 8s ssh "${ssh_opts[@]}" "$target" "rm -f ${guest_logs[*]}" >>"$run/cleanup.log" 2>&1 || true
         fi
-        ssh "${ssh_opts[@]}" "$target" "rm -r '$remote'" >>"$run/cleanup.log" 2>&1 || true
+        timeout -k 2s 8s ssh "${ssh_opts[@]}" "$target" "rm -r '$remote'" >>"$run/cleanup.log" 2>&1 || true
     fi
     if qnx_vm_running "$image"; then
         (cd "$image" && mkqnximage --stop) >>"$run/cleanup.log" 2>&1 || true
@@ -182,6 +195,7 @@ grep -q '^QNX.*x86' "$run/target-uname.txt"
 created="$(ssh "${ssh_opts[@]}" "$target" 'mktemp -d /tmp/fprime-m3.XXXXXXXX')"
 [[ "$created" =~ ^/tmp/fprime-m3\.[a-zA-Z0-9]+$ ]]
 remote="$created"
+guest_logs+=("/dev/shmem/fprime-m3-crash-${remote##*.}")
 scp -q "${ssh_opts[@]}" "$run"/target-bin/* "$training"/{model.txt,input.csv} "$target:$remote/"
 scp -q -r "${ssh_opts[@]}" "$run/runtime" "$target:$remote/"
 for file in model.txt input.csv; do
@@ -221,7 +235,7 @@ scp -q "${ssh_opts[@]}" "$sdk/usr/lib/libexpat.so.2" "$sdk/lib/libsecpol.so.1" "
 
 target_runner=run-m3-target.sh
 trace_files=()
-if (( kernel_trace )); then
+if [[ "$kernel_trace" != 0 ]]; then
     target_runner=run-m3-traced.sh
     trace_files=(trace.kev trace-anchor.txt trace-status.txt tracelogger.log trace-control.log)
     qcc -Vgcc_ntox86_64 -std=c11 -Wall -Wextra "$integration/trace-control.c" -o "$run/trace-control" \
@@ -249,27 +263,41 @@ files+=(m3-slm.xml)
 run_scenario() {
     local run_id="$1" seed="$2" group="$3" scenario="$4" advisor="$5" repair="${6:-restart}"
     local round="$run/$run_id" rc=0 timing=0 assessment=0 verdict=PASS name
-    local transfers=()
+    local transfers=() command=() capture_files=()
     echo "Running $run_id on QNX"
     mkdir "$round"
     printf '%s\n' "run_id=$run_id" "seed=$seed" "group=$group" "scenario=$scenario" "advisor=$advisor" \
-        "repair=$repair" "kernel_trace=$kernel_trace" 'cycles=230' 'period_ns=20000000' 'deadline_ns=20000000' 'freshness_ns=250000000' \
+        "repair=$repair" "kernel_trace=$kernel_trace" "cycles=$cycles" "period_ns=$period_ns" "deadline_ns=$deadline_ns" 'freshness_ns=250000000' \
         'fallback_limit_ns=300000000' 'q1_rejoin_limit_ns=1800000000' 'min_warmup_cycles=40' \
         'injection_cycle=55' 'angle_limit_deg=2' 'stable_cycles=20' 'exit_observer=procmgr' \
         'workload=seeded-adcs' 'trace_storage=qnx-shmem' 'crash_signal=SIGKILL' 'slm_rate=2/min' \
         'slm_backoff_s=1' >"$round/config.txt"
-    timeout -k 5s 28s ssh "${ssh_opts[@]}" "$target" \
-        "$target_environment sh '$remote/$target_runner' '$remote' '$scenario' '$repair' '$seed' '$advisor'" \
-        >"$round/target.log" 2>&1 || rc=$?
+    command=(ssh "${ssh_opts[@]}" "$target"
+        "$target_environment sh '$remote/$target_runner' '$remote' '$scenario' '$repair' '$seed' '$advisor'")
+    if [[ "$kernel_trace" == on-miss ]]; then
+        command[-1]="M4_TRACE_WATCH=1 ${command[-1]}"
+        command=("$python" "$integration/watch-m4.py" "$host_tracefs" "$round" "$qemu_pid" "$image"
+            "$cycles" "$period_ns" "$deadline_ns" "${command[@]}")
+    fi
+    timeout -k 5s 28s "${command[@]}" >"$round/target.log" 2>&1 || rc=$?
     printf '%s\n' "$rc" >"$round/target-status.txt"
     for name in "${files[@]}"; do transfers+=("$target:$remote/$name"); done
-    scp -q "${ssh_opts[@]}" "${transfers[@]}" "$round/" 2>>"$round/target.log" || true
-    if (( kernel_trace )); then
-        for name in "${trace_files[@]}"; do
-            scp -q "${ssh_opts[@]}" "$target:$remote/$name" "$round/$name" 2>>"$round/target.log" || true
+    timeout -k 2s 10s scp -q "${ssh_opts[@]}" "${transfers[@]}" "$round/" 2>>"$round/target.log" || true
+    if [[ "$kernel_trace" != 0 ]]; then
+        capture_files=("${trace_files[@]}")
+        if [[ "$kernel_trace" == on-miss ]]; then
+            if [[ -f "$round/host-sched-before.txt" ]]; then
+                capture_files+=(trace-trigger.txt)
+            elif ((rc == 0)); then
+                capture_files=(trace-status.txt)
+            fi
+        fi
+        for name in "${capture_files[@]}"; do
+            timeout -k 2s 6s scp -q "${ssh_opts[@]}" "$target:$remote/$name" "$round/$name" 2>>"$round/target.log" || true
         done
-        if [[ ! -s "$round/trace.kev" ]] || ! grep -Fxq \
-                'wait_exit=0 before_exit=0 after_exit=0 stop_exit=0 tracelogger_exit=0' "$round/trace-status.txt"; then
+        if ! grep -Fxq 'wait_exit=0 before_exit=0 after_exit=0 stop_exit=0 tracelogger_exit=0' "$round/trace-status.txt" ||
+           { [[ "${capture_files[0]}" == trace.kev ]] && [[ ! -s "$round/trace.kev" ]]; } ||
+           { [[ -f "$round/host-sched-before.txt" ]] && [[ ! -s "$round/trace-trigger.txt" ]]; }; then
             printf 'Incomplete ring trace for %s\n' "$run_id" >&2
             result=1
         fi

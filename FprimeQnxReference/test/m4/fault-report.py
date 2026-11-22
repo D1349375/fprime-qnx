@@ -120,6 +120,7 @@ def table(headers, rows):
 def raw_links(directory, run_id):
     names = ("config.txt", "target.log", "flight.csv", "link.csv", "advisor.log", "death.csv", "slm.log",
              "m3-slm.xml", "timing.txt", "adcs.json", "adcs.err", "trace.kev", "trace-anchor.txt",
+             "watch.json", "host-sched-before.txt", "host-sched-after.txt", "clock-anchors.tsv", "trace-trigger.txt",
              "trace-status.txt", "tracelogger.log", "trace-control.log")
     return " · ".join(f"[{name}]({run_id}/{name})" for name in names if (directory / name).is_file())
 

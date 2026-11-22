@@ -32,11 +32,17 @@ SSH_OPTS=(-i "${KEY}" -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=
           -o ConnectTimeout=5 -o BatchMode=yes)
 GDS_PID=""
 GUEST=""
+LISTENER_PIDS=()
 
 log() { echo "[ref-gds-check] $*"; }
 fail() { log "FAIL: $*"; exit 1; }
 
 cleanup() {
+    local pid
+    for pid in "${LISTENER_PIDS[@]}"; do
+        kill "$pid" 2>/dev/null || true
+        wait "$pid" 2>/dev/null || true
+    done
     if [ -n "${GUEST}" ]; then
         ssh "${SSH_OPTS[@]}" "root@${GUEST}" 'slay -f Ref >/dev/null 2>&1; cat /tmp/fprime-ref/ref.log 2>/dev/null' \
             > "${RUN_DIR}/target-console.log" 2>/dev/null
@@ -81,26 +87,40 @@ scp -q "${SSH_OPTS[@]}" "${BIN}" "root@${GUEST}:/tmp/fprime-ref/Ref" || fail "sc
 # -f: the QNX shell keeps the channel open for its background job, so let ssh go to the background after auth
 ssh -n -f "${SSH_OPTS[@]}" "root@${GUEST}" \
     "cd /tmp/fprime-ref && nohup ./Ref -a ${HOST_IP} -p ${PORT} > ref.log 2>&1 < /dev/null &"
-sleep 8
 
 # 4. Command round trip. With `-g none` the GDS itself writes no Event/Channel logs, so the downlink is observed with
 #    fprime-cli listeners started before the command is sent. Each listener returns on its first matching item, so
 #    there is one listener per expected event or channel.
 LISTEN_SECONDS=$((CHECK_SECONDS + 5))
-LISTENER_PIDS=()
 listen() {  # listen <events|channels> <search> <name>
     fprime-cli "$1" --dictionary "${DICT}" -s "$2" -t "${LISTEN_SECONDS}" -l "${RUN_DIR}/cli-$3" --log-directly \
         > "${RUN_DIR}/downlink-$3.txt" 2>&1 &
     LISTENER_PIDS+=($!)
 }
+wait_for_telemetry() {
+    local capture deadline=$((SECONDS + LISTEN_SECONDS))
+    for capture in "$@"; do
+        until grep -Fq "rateGroup1Comp" "$capture" 2>/dev/null; do
+            kill -0 "${GDS_PID}" 2>/dev/null || fail "fprime-gds exited; see ${RUN_DIR}/gds-stdout.log"
+            (( SECONDS < deadline )) || fail "rate group 1 telemetry did not reach ${capture}"
+            sleep 0.2
+        done
+    done
+}
+
+# A running GDS process may not yet have accepted Ref's TCP connection.
+listen channels rateGroup1Comp channel-rategroup1
+wait_for_telemetry "${RUN_DIR}/downlink-channel-rategroup1.txt"
 listen events NoOpReceived event-noop
 listen events OpCodeCompleted event-completed
-listen channels rateGroup1Comp channel-rategroup1
-sleep 3
+# These CLI sessions log all decoded channels even when searching for an event.
+wait_for_telemetry "${RUN_DIR}/cli-event-noop/channel.log" "${RUN_DIR}/cli-event-completed/channel.log"
+log "Ref telemetry received by the event listeners"
 log "sending CdhCore.cmdDisp.CMD_NO_OP"
 fprime-cli command-send CdhCore.cmdDisp.CMD_NO_OP --dictionary "${DICT}" -l "${RUN_DIR}/cli-command" --log-directly \
-    > "${RUN_DIR}/cli-command.log" 2>&1
+    > "${RUN_DIR}/cli-command.log" 2>&1 || fail "command-send failed; see ${RUN_DIR}/cli-command.log"
 wait "${LISTENER_PIDS[@]}" 2>/dev/null
+LISTENER_PIDS=()
 
 # 5. Verdict
 RESULT=0

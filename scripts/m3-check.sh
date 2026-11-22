@@ -73,6 +73,7 @@ cleanup() {
         # Only the files staged by the harness are removed.
         ssh "${ssh_opts[@]}" "$target" "cd '$target_dir' || exit 1
             rm -f FlightSW MlAdvisor watch-death slm slmctl run-m3-target.sh m3-slm.xml.in m3-slm.xml
+            rm -f '/dev/shmem/fprime-m3-crash-${target_dir##*.}'
             rm -f flight.csv flight.log flight.err advisor.log advisor.err link.csv slm.log death.csv death.log
             rm -f slm-libs/libexpat.so.2 slm-libs/libsecpol.so.1 slm-libs/libqh.so.1
             cd .. && rmdir '$target_dir/slm-libs' '$target_dir'" </dev/null >>"$run/cleanup.log" 2>&1 || true

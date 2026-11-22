@@ -125,11 +125,38 @@ The default is ten interleaved pairs. Set the optional third argument for a shor
 Each pair runs the same held-out seed and frozen FFN in one guest with fresh FlightSW and
 advisor processes. The SLM XML check verifies the advisor's repair policy in both arms.
 The fixed crash trigger is the first eligible snapshot from cycle 55 onward. The report
-shows the actual snapshot and injection offset for each arm.
+shows the actual snapshot and injection offset for each arm. A per-run marker in QNX
+shared memory records that the advisor has claimed the injection. SLM's replacement
+uses the same marker, and the harness clears it before each new scenario.
+The timing checker records whether flight accepted its first advisor result by cycle 40.
 
 Add `M4_KERNEL_TRACE=1` before the command to capture the QNX memory ring in both arms.
 The ring is exported after each scenario. Use the SDP's `traceprinter` with
 `-n -p '%c|%C|%Z|%z|' -f trace.kev` to decode it. Each trace includes two guest clock anchors.
+
+To retain both scheduler traces when a deadline may have been missed, run
+`sudo scripts/m4-tracefs.sh "$(id -un)"` in a second Linux terminal and keep it open
+for the run. The helper prints a dedicated tracefs path. Pass that path to any ADCS
+mode, for example
+
+~~~bash
+M4_HOST_TRACEFS=/run/fprime-adcs-trace.REPLACE_ME M4_KERNEL_TRACE=on-miss \
+    scripts/m4-check.sh "$HOME/e6-qnx-x86_64" adcs-pair 2
+~~~
+
+The watcher reads the guest's existing, line-buffered flight records over a persistent
+SSH connection. A cycle gap, failed or late submission, loss of flight progress or
+a stalled guest reply retains the host ring. A responsive guest exports its QNX ring
+after a short recovery window. If a stalled observation resumes with the affected
+cycles on time, the watcher clears that provisional trigger and continues watching.
+`watch.json` gives the trigger, any observed deadline failure and capture status.
+The clock brackets in `clock-anchors.tsv` bound alignment.
+The watcher stores host scheduling events by QEMU thread name and records the test
+guest's local TIDs and CPU masks. Use one QEMU guest at a time for clear attribution
+when the kernel trace uses a different PID namespace. The original checker still
+computes the 20 ms verdict from the complete flight records. Healthy scenarios keep
+the watcher status and skip transferring the rings. Stop the tracefs helper when the
+test ends.
 
 Open `fault-report.md` in the printed evidence directory. It links to each round's
 configuration, original checker output, raw guest timeline, available trace, SDK

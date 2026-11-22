@@ -1,6 +1,8 @@
+#include <cerrno>
 #include <csignal>
 #include <cinttypes>
 #include <cstdio>
+#include <fcntl.h>
 #include <thread>
 #include <unistd.h>
 
@@ -81,9 +83,19 @@ int main(int argc, char** argv) {
     Os::init();
     M2::Options options;
     if (!M2::parseOptions(argc, argv, false, options)) {
-        std::fprintf(stderr, "Usage: MlAdvisor [--transport udp|qnx] [--port N] [--m3 SCENARIO] [--model PATH]\n");
+        std::fputs("Usage: MlAdvisor [--transport udp|qnx] [--port N] [--m3 SCENARIO] [--model PATH]\n"
+                   "The crash scenario requires a run-specific --crash-marker PATH.\n", stderr);
         return 2;
     }
+    bool crashArmed = false;
+    if (options.crashMarker != nullptr && access(options.crashMarker, F_OK) != 0) {
+        if (errno != ENOENT) {
+            std::perror("MlAdvisor crash marker");
+            return 1;
+        }
+        crashArmed = true;
+    }
+    bool probeOldSession = options.crashMarker != nullptr && !crashArmed;
 #ifdef FPRIME_QNX_ML_ADVISOR
     std::unique_ptr<M4::Ffn> model;
     if (options.model != nullptr) {
@@ -124,8 +136,6 @@ int main(int argc, char** argv) {
     GateExercise exercise;
     std::uint64_t lastCycle = 0;
     std::uint64_t session = 0;
-    bool first = true;
-    bool original = false;
     bool stalled = false;
     while (running) {
         M2::HubFrame frame;
@@ -136,15 +146,18 @@ int main(int argc, char** argv) {
             }
         } else if (hub.unwrap(frame, snapshot) && snapshot.type == M2::MessageType::Snapshot &&
                    snapshot.client == client && (snapshot.session != session || snapshot.cycle > lastCycle)) {
-            if (first) {
-                original = snapshot.cycle < M2::InjectionCycle;
-                first = false;
-                if (options.scenario == M2::Scenario::Crash && !original) {
-                    M2::Packet old{M2::MessageType::Result, client, snapshot.session - 1, snapshot.cycle};
-                    (void)post(transport, hub, old);
-                }
+            if (probeOldSession) {
+                probeOldSession = false;
+                M2::Packet old{M2::MessageType::Result, client, snapshot.session - 1, snapshot.cycle};
+                (void)post(transport, hub, old);
             }
-            if (original && snapshot.cycle >= M2::InjectionCycle && options.scenario == M2::Scenario::Crash) {
+            if (crashArmed && snapshot.cycle >= M2::InjectionCycle) {
+                // SLM's replacement uses the same marker and can only exercise the stale session.
+                const int marker = open(options.crashMarker, O_WRONLY | O_CREAT | O_EXCL, 0600);
+                if (marker == -1 || close(marker) != 0) {
+                    std::perror("MlAdvisor claim crash marker");
+                    return 1;
+                }
                 event("CRASH_BEGIN", pid, snapshot.session, snapshot.cycle);
                 // Abrupt termination without a core file that could skew the paired run.
                 kill(getpid(), SIGKILL);
