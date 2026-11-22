@@ -131,6 +131,15 @@ def assess(directory):
         if not condition:
             failures.append(message)
 
+    rejoined = [row for row in records if row["rejoin"]]
+    if advisor_expected:
+        warmup = int(config["min_warmup_cycles"])
+        first_accepted = min((row["cycle_id"] for row in rejoined), default=None)
+        warmup_ok = first_accepted is not None and first_accepted <= warmup
+        print(f"advisor_warmup={'PASS' if warmup_ok else 'FAIL'} limit_cycle={warmup} "
+              f"first_accepted_cycle={first_accepted if first_accepted is not None else 'none'}")
+        require(warmup_ok, f"Advisor did not warm up by cycle {warmup}")
+
     link = list(csv_rows(directory / "link.csv", dict.fromkeys(("ns", "pid", "session", "cycle", "sample_ns"), int)))
     if (advisor_expected and not link) or any(a["ns"] > b["ns"] for a, b in zip(link, link[1:])):
         raise Incomplete("Missing or unordered IPC trace")
@@ -146,12 +155,7 @@ def assess(directory):
         {"event": line.split()[1], **{key: int(value) for key, value in fields(line).items()}}
         for line in log.splitlines() if line.startswith("EVENT ")
     ]
-    rejoined = [row for row in records if row["rejoin"]]
-    warmup = int(config["min_warmup_cycles"])
-    if advisor_expected:
-        require(any(row["cycle_id"] <= warmup and row["rejoin"] for row in records),
-                "Advisor did not warm up by the scheduled cycle")
-    else:
+    if not advisor_expected:
         require(not starts and not rejoined and not sessions and all(r["fdir"] for r in records),
                 "FDIR control unexpectedly used an advisor session")
     for row in rejoined:
@@ -184,6 +188,10 @@ def assess(directory):
               f"old_session={original_session} flight_pid={ready['pid']} observation_end_ns={end}")
         require(expected_ci <= ci <= expected_ci + 4, "Injection missed its fixed snapshot window")
         if group in {"q1", "q2"}:
+            require(injection["pid"] == next(iter(starts), None) and
+                    sessions.get(original_session, {}).get("pid") == injection["pid"] and
+                    any(session == original_session and cycle == ci for session, cycle, _ in issued),
+                    "Crash was not triggered by an issued snapshot from the first advisor")
             require(not any(row["fallback"] and 0 < row["fallback_ns"] < early for row in records),
                     "Advisor entered FDIR before the scheduled crash")
             exits = [event["ns"] for event in link if event["event"] == "EXIT_OBSERVED" and

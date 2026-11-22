@@ -14,7 +14,12 @@ ln -s "$trace" trace.kev
 : >trace-status.txt
 ./tracelogger -r -F1 -F2 -k 192 -v -f "$trace" >tracelogger.log 2>&1 &
 tracer=$!
+scenario=
 cleanup() {
+    if [ -n "$scenario" ]; then
+        kill -TERM "$scenario" 2>/dev/null || true
+        wait "$scenario" 2>/dev/null || true
+    fi
     if [ -n "$tracer" ] && kill -0 "$tracer" 2>/dev/null; then
         kill -TERM "$tracer" 2>/dev/null || true
         wait "$tracer" 2>/dev/null || true
@@ -31,9 +36,29 @@ logger_rc=0
 scenario_rc=0
 waitfor "$trace" 2 || wait_rc=$?
 ./trace-control anchor >trace-anchor.txt 2>trace-control.log || before_rc=$?
-sh ./run-m3-target.sh "$@" || scenario_rc=$?
+if [ "${M4_TRACE_WATCH:-0}" = 1 ]; then
+    rm -f trace-trigger.txt trace-scenario-status.txt
+    : >flight.log
+    : >flight.csv
+    (
+        rc=0
+        sh ./run-m3-target.sh "$@" || rc=$?
+        printf '%s\n' "$rc" >trace-scenario-status.txt
+        exit "$rc"
+    ) </dev/null >&2 &
+    scenario=$!
+    monitor_rc=0
+    ./trace-control stream || monitor_rc=$?
+    wait "$scenario" || scenario_rc=$?
+    scenario=
+    if [ "$scenario_rc" -eq 0 ]; then scenario_rc=$monitor_rc; fi
+else
+    sh ./run-m3-target.sh "$@" || scenario_rc=$?
+fi
 ./trace-control anchor >>trace-anchor.txt 2>>trace-control.log || after_rc=$?
-./trace-control stop >>trace-control.log 2>&1 || stop_rc=$?
+if [ "${M4_TRACE_WATCH:-0}" != 1 ] || [ ! -s trace-trigger.txt ]; then
+    ./trace-control stop >>trace-control.log 2>&1 || stop_rc=$?
+fi
 if [ "$stop_rc" -ne 0 ]; then
     kill -INT "$tracer" 2>/dev/null || true
 fi

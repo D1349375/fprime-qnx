@@ -31,6 +31,12 @@ control="/dev/slm-fprime-m3-$suffix"
 export LD_LIBRARY_PATH="$target_dir/slm-libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 # Do not carry a log or a control channel forward from a previous SLM process.
 [ ! -e "$control" ] && [ ! -e /dev/name/local/fprime-m2 ]
+crash_marker=
+if [ "$scenario" = crash ]; then
+    crash_marker="/dev/shmem/fprime-m3-crash-$suffix"
+    rm -f "$crash_marker"
+    advisor_options="$advisor_options --crash-marker $crash_marker"
+fi
 for file in flight.csv flight.log flight.err advisor.log advisor.err link.csv slm.log death.csv death.log; do
     : > "$file"
 done
@@ -49,6 +55,9 @@ cleanup() {
     if [ -n "$watcher" ]; then
         kill -TERM "$watcher" 2>/dev/null || true
         wait "$watcher" 2>/dev/null || true
+    fi
+    if [ -n "$crash_marker" ]; then
+        rm -f "$crash_marker"
     fi
 }
 trap cleanup 0

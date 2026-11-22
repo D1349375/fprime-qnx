@@ -18,6 +18,7 @@ struct Options {
     const char* linkLog = "link.csv";
     std::uint64_t replaySeed = 0;
     const char* model = nullptr;
+    const char* crashMarker = nullptr;
 };
 
 inline bool readUnsigned(const char* text, std::uint64_t& value) {
@@ -60,6 +61,8 @@ inline bool parseOptions(int argc, char** argv, bool flight, Options& options) {
             options.replaySeed = number;
         } else if (!flight && std::strcmp(key, "--model") == 0 && *value != '\0') {
             options.model = value;
+        } else if (!flight && std::strcmp(key, "--crash-marker") == 0 && *value != '\0') {
+            options.crashMarker = value;
         } else if (flight && std::strcmp(key, "--link-log") == 0 && *value != '\0') {
             options.linkLog = value;
         } else if (flight && std::strcmp(key, "--cycles") == 0 && readUnsigned(value, number)) {
@@ -69,6 +72,9 @@ inline bool parseOptions(int argc, char** argv, bool flight, Options& options) {
         } else {
             return false;
         }
+    }
+    if (!flight && ((options.scenario == Scenario::Crash) != (options.crashMarker != nullptr))) {
+        return false;
     }
     return (options.replaySeed == 0 && options.model == nullptr) || options.scenario == Scenario::Normal ||
            options.scenario == Scenario::Recovery || options.scenario == Scenario::Crash;

@@ -38,7 +38,8 @@ class QnxTimer final : public QnxTimerComponentBase {
     //! Start the timer and emit CycleOut every interval. Blocks the calling thread until quit() is called.
     void startTimer(const Fw::TimeInterval& interval);
 
-    //! Start with an absolute first release on CLOCK_MONOTONIC.
+    //! Start on a CLOCK_MONOTONIC release grid. One-shot expirations skip elapsed releases
+    //! and rearm for the next future release on the same grid.
     void startTimerAt(const Fw::TimeInterval& interval, const struct timespec& firstRelease);
 
     //! Request the timer loop to exit. Async-signal-safe.
@@ -56,7 +57,7 @@ class QnxTimer final : public QnxTimerComponentBase {
     std::atomic<bool> m_quit;     //!< set by quit(), read by the timer loop
     std::atomic<int> m_coid;      //!< connection id used to send the wake-up pulse; -1 when not running
     int m_chid;                   //!< private channel id; -1 when not created
-    timer_t m_timerId;            //!< periodic timer
+    timer_t m_timerId;            //!< POSIX timer
     bool m_timerCreated;          //!< true once timer_create succeeded
     std::atomic<U64> m_overruns;  //!< accumulated timer overruns
     Os::RawTime m_rawTime;        //!< timestamp passed to CycleOut

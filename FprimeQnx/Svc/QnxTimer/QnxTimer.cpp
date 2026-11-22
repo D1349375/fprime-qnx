@@ -18,10 +18,15 @@
 namespace Svc {
 
 namespace {
-//! Pulse code delivered by the periodic timer
+//! Pulse code delivered by the timer
 constexpr int PULSE_CODE_TICK = _PULSE_CODE_MINAVAIL;
 //! Pulse code sent by quit() to wake the timer loop immediately
 constexpr int PULSE_CODE_QUIT = _PULSE_CODE_MINAVAIL + 1;
+constexpr U64 NANOSECONDS_PER_SECOND = 1000000000ULL;
+
+U64 toNanoseconds(const struct timespec& time) {
+    return static_cast<U64>(time.tv_sec) * NANOSECONDS_PER_SECOND + static_cast<U64>(time.tv_nsec);
+}
 }  // namespace
 
 QnxTimer ::QnxTimer(const char* const compName)
@@ -107,18 +112,22 @@ void QnxTimer ::runTimer(const Fw::TimeInterval& interval, const struct timespec
 
     const time_t seconds = static_cast<time_t>(interval.getSeconds());
     FW_ASSERT(static_cast<U32>(seconds) == interval.getSeconds());
-    struct itimerspec itval;
-    itval.it_interval.tv_sec = seconds;
-    itval.it_interval.tv_nsec = static_cast<long>(interval.getUSeconds()) * 1000L;
-    itval.it_value = firstRelease == nullptr ? itval.it_interval : *firstRelease;
-    const int flags = firstRelease == nullptr ? 0 : TIMER_ABSTIME;
+    const struct timespec period = {seconds, static_cast<long>(interval.getUSeconds()) * 1000L};
+    const bool absolute = firstRelease != nullptr;
+    struct itimerspec itval{};
+    itval.it_value = absolute ? *firstRelease : period;
+    if (!absolute) {
+        itval.it_interval = period;
+    }
+    const U64 periodNs = absolute ? toNanoseconds(period) : 0;
+    const int flags = absolute ? TIMER_ABSTIME : 0;
     if (timer_settime(this->m_timerId, flags, &itval, nullptr) == -1) {
         Fw::Logger::log("QnxTimer timer_settime error: %s\n", strerror(errno));
         this->cleanup();
         return;
     }
 
-    while (true) {
+    while (!this->m_quit.load()) {
         struct _pulse pulse;
         const int rcvid = MsgReceivePulse(this->m_chid, &pulse, sizeof(pulse), nullptr);
         if (rcvid == -1) {
@@ -149,6 +158,27 @@ void QnxTimer ::runTimer(const Fw::TimeInterval& interval, const struct timespec
             Fw::Logger::log("QnxTimer raw time error: %d\n", static_cast<I32>(rawTimeStatus));
         }
         this->CycleOut_out(0, this->m_rawTime);
+
+        if (periodNs == 0 || this->m_quit.load()) {
+            continue;
+        }
+        struct timespec now{};
+        if (clock_gettime(CLOCK_MONOTONIC, &now) == -1) {
+            Fw::Logger::log("QnxTimer clock_gettime error: %s\n", strerror(errno));
+            break;
+        }
+        // Keep the original release grid even when the timer or CycleOut ran late.
+        // The next one-shot skips elapsed slots without accumulating timer pulses.
+        const U64 lastRelease = toNanoseconds(itval.it_value);
+        const U64 nowNs = toNanoseconds(now);
+        const U64 elapsed = nowNs > lastRelease ? nowNs - lastRelease : 0;
+        const U64 nextRelease = lastRelease + (elapsed / periodNs + 1) * periodNs;
+        itval.it_value.tv_sec = static_cast<time_t>(nextRelease / NANOSECONDS_PER_SECOND);
+        itval.it_value.tv_nsec = static_cast<long>(nextRelease % NANOSECONDS_PER_SECOND);
+        if (timer_settime(this->m_timerId, TIMER_ABSTIME, &itval, nullptr) == -1) {
+            Fw::Logger::log("QnxTimer timer_settime error: %s\n", strerror(errno));
+            break;
+        }
     }
     this->cleanup();
 }
