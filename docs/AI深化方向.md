@@ -42,7 +42,7 @@
 
 ### 方向 A(核心):可以被關住的機上 AI —— Containable Onboard ML
 
-**一句話**:讓 NASA 飛行軟體在 QNX 上跑機上 AI 異常偵測;AI 出任何事(卡住、吃光 CPU、當掉),飛行軟體照常準時運作,AI 自動重啟。
+**Project objective** Run NASA flight software and an onboard anomaly advisor on QNX. Demonstrate FDIR takeover during defined advisor failures and acceptance of a fresh result after SLM restarts the advisor. Evaluate flight deadlines locally.
 
 **架構**
 ```

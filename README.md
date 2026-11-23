@@ -162,7 +162,8 @@ Open `fault-report.md` in the printed evidence directory. It links to each round
 configuration, original checker output, raw guest timeline, available trace, SDK
 packages and source and model revisions. The command returns a nonzero status if
 a verdict fails, a pair's XML differs outside the repair field, or a requested trace
-is incomplete. Keep evidence local according to §9.4 of the [project plan](docs/專案規劃書.md).
+is incomplete. Store measured timing, deadline counts, paired results and traces in local
+evidence. The [project plan](docs/專案規劃書.md#94-授權與公開材料必做) defines the scope of public material.
 
 ## Project documents
 
