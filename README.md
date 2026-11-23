@@ -93,8 +93,10 @@ exits an unrelated guest process, and stops the advisor. It checks for one `Proc
 event for the watched advisor, FDIR engagement, SLM PID replacement, adoption of the new advisor
 session, and the control-source transitions. The test copy of the SLM configuration gives ground telemetry a sampling window during FDIR.
 It then restarts GDS and checks that the same FlightSW process
-continues and reconnects. Use `scripts/gds-check.sh --ui` and open the local GDS on port 5000
-to inspect Events and the `ControlSource` channel when the script pauses.
+continues and reconnects. With `scripts/gds-check.sh --ui`, open Events in the local GDS
+on port 5000 at the first pause. Press Enter to stop the advisor and watch the events arrive.
+At the second pause, inspect Events and the `ControlSource` channel, then press Enter
+to run the reconnect and shutdown checks.
 
 `FlightSW --m3 normal --gds HOST:PORT` enables the command, event, and telemetry services.
 With `--transport qnx`, `Svc.QnxProcessMonitor` reports process-manager death pulses for the

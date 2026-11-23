@@ -246,6 +246,12 @@ send_noop() {
 send_noop command
 wait_log "$events" '\.cmdDisp\.NoOpReceived,'
 wait_log "$events" '\.cmdDisp\.OpCodeCompleted,'
+
+if (( ui )); then
+    printf 'GDS at http://localhost:%s. Open Events, then press Enter here to stop the advisor.\n' "${GDS_GUI_PORT:-5000}"
+    read -r || true
+fi
+
 # The system-wide subscription must ignore a different child's exit.
 ssh "${ssh_opts[@]}" "root@$guest" /bin/sh -s >"$run/unrelated-exit.log" 2>&1 <<'TARGET'
 set -eu
