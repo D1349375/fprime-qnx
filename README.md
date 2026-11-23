@@ -74,6 +74,28 @@ The runner also accepts an existing compatible x86-64 APK sysroot. It records so
 loader output, weights hash, and score and label comparisons. On QNX x86-64, the fixed fixture matched
 the Linux results and the independent numerical reference. [E6 verification](docs/實作迭代紀錄.md#i-22--e6-固定權重推論驗收2026-11-20)
 
+## Reproduce the ADCS GDS check
+
+Build the QNX reference deployment as in M2, activate the F Prime environment, and source the QNX SDP.
+Then run these commands from the repository root.
+
+```bash
+scripts/gds-check.sh
+scripts/ground-timing-check.sh
+```
+
+The GDS check uses the M3 SLM template and the deterministic advisor. It sends `CMD_NO_OP`,
+stops the advisor, and checks FDIR engagement, acceptance of a new advisor session, and the
+control-source transitions. It then restarts GDS and checks that the same FlightSW process
+continues and reconnects. Use `scripts/gds-check.sh --ui` and open the local GDS on port 5000
+to inspect Events and the `ControlSource` channel when the script pauses.
+
+`FlightSW --m3 normal --gds HOST:PORT` enables the command, event, and telemetry services.
+Use the generated `FlightTopologyDictionary.json` and the `space-packet-space-data-link` GDS
+framing configuration. `GDS_EVIDENCE_ROOT` selects an output directory outside the checkout.
+The timing script alternates GDS off and on with the same replay seed and writes its per-run
+evidence there. [GDS implementation and verification](docs/實作迭代紀錄.md#i-58--connect-flightsw-to-gds-2026-11-23)
+
 ## Reproduce M4
 
 Use the M3 QNX x86-64 environment and the E6 APK sysroot. On Linux, use the mlpack 4.7.0
