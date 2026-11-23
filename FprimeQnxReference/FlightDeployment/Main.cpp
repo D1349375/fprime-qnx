@@ -122,7 +122,8 @@ void runLink(M2::Transport& transport,
              const std::atomic<bool>& running,
              LinkCounts& counts,
              LinkTrace* linkTrace,
-             ReplyPause* pause) {
+             ReplyPause* pause,
+             Svc::QnxProcessMonitor* monitor) {
     const bool m3 = linkTrace != nullptr;
     const auto log = [linkTrace, &counts](std::uint64_t now, const char* event, std::uint64_t pid,
                                           std::uint64_t session, std::uint64_t cycle, std::uint64_t sample) {
@@ -182,6 +183,12 @@ void runLink(M2::Transport& transport,
                 client = request.client;
                 epoch = flightEpoch;
                 advisorPid = m3 ? request.cycle : 0;
+                if (monitor != nullptr) {
+                    // Bind the watch to the QNX sender of this session request.
+                    const auto sender = transport.pendingSenderPid();
+                    const bool matches = sender > 0 && static_cast<std::uint64_t>(sender) == advisorPid;
+                    monitor->watch(matches ? static_cast<U32>(sender) : 0, "MlAdvisor");
+                }
                 ++session;
                 acceptedCycle = 0;
                 issued = {};
@@ -400,7 +407,11 @@ int main(int argc, char** argv) {
     std::atomic<bool> groundStopping{false};
     bool groundStarted = false;
     bool groundClockOk = true;
+    Svc::QnxProcessMonitor* monitor = nullptr;
     const auto stopGround = [&]() {
+        if (monitor != nullptr) {
+            monitor->stop();
+        }
         groundStopping.store(true, std::memory_order_release);
         if (groundClock.joinable()) {
             M2Flight::groundTimer.quit();
@@ -421,12 +432,15 @@ int main(int argc, char** argv) {
     ReplyPause pause;
     const bool holdReply = options.scenario == M2::Scenario::Transport;
     try {
+        if (gds && options.transport == M2::TransportKind::Qnx && M2Flight::processMonitor.start()) {
+            monitor = &M2Flight::processMonitor;
+        }
         if (holdReply) {
             controller = std::thread(&ReplyPause::control, &pause, std::cref(running));
         }
         worker = std::thread(runLink, std::ref(transport), std::ref(M2Flight::hubLink), std::ref(handoff),
                              std::cref(running), std::ref(counts), m3 ? &linkTrace : nullptr,
-                             holdReply ? &pause : nullptr);
+                             holdReply ? &pause : nullptr, monitor);
         logger = std::thread(writeTiming, std::ref(handoff), std::ref(linkTrace), std::cref(logging), file, events,
                              gds ? &M2Flight::ground : nullptr);
         if (gds) {

@@ -20,7 +20,7 @@ def last_session(channel_rows):
     return sessions[-1] if sessions else 0
 
 
-def check(directory, crash_event, crash_channel):
+def check(directory, crash_event, crash_channel, advisor_pid, sessions=None):
     events = list(rows(directory / "event.log", 5))
     channels = list(rows(directory / "channel.log", 4))
     before_crash = events[:crash_event]
@@ -28,6 +28,12 @@ def check(directory, crash_event, crash_channel):
     if "NoOpReceived" not in names or "OpCodeCompleted" not in names[names.index("NoOpReceived") + 1:]:
         raise ValueError("GDS did not confirm CMD_NO_OP")
     print("PASS CMD_NO_OP round trip")
+
+    death = ("M2Flight.processMonitor.ProcessDied", f"Process {advisor_pid} (MlAdvisor) died")
+    deaths = [row for row in events if row[0].endswith(".processMonitor.ProcessDied")]
+    if deaths != [death] or death not in events[crash_event:]:
+        raise ValueError(f"expected one ProcessDied for the stopped advisor {advisor_pid}, got {deaths}")
+    print("PASS kernel death event for the watched advisor only")
 
     old_session = last_session(channels[:crash_channel])
     if old_session == 0:
@@ -56,15 +62,29 @@ def check(directory, crash_event, crash_channel):
         raise ValueError("no finite attitude error in GDS")
     print("PASS control source and attitude telemetry")
 
+    if sessions is not None:
+        pids = {}
+        for line in sessions.read_text(encoding="utf-8").splitlines():
+            pid, session = map(int, line.split(","))
+            if session in pids and pids[session] != pid:
+                raise ValueError(f"conflicting PIDs for session {session}")
+            pids[session] = pid
+        replacement = pids.get(new_session, 0)
+        if pids.get(old_session) != advisor_pid or replacement <= 1 or replacement == advisor_pid:
+            raise ValueError("advisor session change does not match an SLM PID replacement")
+        print("PASS SLM replaced the advisor and FlightSW accepted its session")
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=Path)
     parser.add_argument("crash_event", type=int)
     parser.add_argument("crash_channel", type=int)
+    parser.add_argument("advisor_pid", type=int)
+    parser.add_argument("--sessions", type=Path)
     args = parser.parse_args()
     try:
-        check(args.directory, args.crash_event, args.crash_channel)
+        check(args.directory, args.crash_event, args.crash_channel, args.advisor_pid, args.sessions)
     except (OSError, ValueError) as error:
         print(f"FAIL {error}", file=sys.stderr)
         return 1

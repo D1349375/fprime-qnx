@@ -117,6 +117,8 @@ if ! qnx_vm_running "$image"; then
     started=1
     qnx_vm_start "$image" "$run/guest-boot.log"
 fi
+qemu_pid=$(cat "$image/output/qemu.pid")
+tr '\0' '\n' <"/proc/$qemu_pid/cmdline" >"$run/qemu-argv.txt"
 guest=$(qnx_vm_find_guest "$image" "${ssh_opts[@]}") || fail 'QNX guest unavailable'
 ssh "${ssh_opts[@]}" "root@$guest" uname -a >"$run/target-uname.txt"
 host_ip=$(ip -4 -o addr show virbr0 | awk '{sub(/\/.*/, "", $4); print $4; exit}')
@@ -244,6 +246,20 @@ send_noop() {
 send_noop command
 wait_log "$events" '\.cmdDisp\.NoOpReceived,'
 wait_log "$events" '\.cmdDisp\.OpCodeCompleted,'
+
+if (( ui )); then
+    printf 'GDS at http://localhost:%s. Open Events, then press Enter here to stop the advisor.\n' "${GDS_GUI_PORT:-5000}"
+    read -r || true
+fi
+
+# The system-wide subscription must ignore a different child's exit.
+ssh "${ssh_opts[@]}" "root@$guest" /bin/sh -s >"$run/unrelated-exit.log" 2>&1 <<'TARGET'
+set -eu
+/bin/sh -c 'exit 0' &
+unrelated=$!
+wait "$unrelated"
+printf 'Unrelated process exited pid=%s\n' "$unrelated"
+TARGET
 crash_event=$(wc -l <"$events")
 crash_channel=$(wc -l <"$channels")
 ssh "${ssh_opts[@]}" "root@$guest" "/bin/sh -s '$target_dir' '$flight_pid'" \
@@ -258,13 +274,28 @@ printf 'Stopping staged MlAdvisor pid=%s\n' "$pid"
 kill -9 "$pid"
 TARGET
 
+advisor_pid=$(sed -nE 's/^Stopping staged MlAdvisor pid=([0-9]+)$/\1/p' "$run/injection.log")
+[[ "$advisor_pid" =~ ^[1-9][0-9]*$ ]] || fail 'stopped advisor PID unavailable'
 deadline=$((SECONDS + 30))
-until python3 "$project/test/int/check-gds.py" "$run/capture" "$crash_event" "$crash_channel" >"$run/verdict.txt" 2>&1; do
+until python3 "$project/test/int/check-gds.py" "$run/capture" "$crash_event" "$crash_channel" "$advisor_pid" >"$run/verdict.txt" 2>&1; do
     kill -0 "$target_pid" 2>/dev/null || fail 'SLM stopped during the advisor restart'
     (( SECONDS < deadline )) || { cat "$run/verdict.txt"; fail 'GDS event or telemetry verification failed after the advisor restart'; }
     sleep 0.2
 done
 cat "$run/verdict.txt"
+
+ssh "${ssh_opts[@]}" "root@$guest" "/bin/sh -s '$target_dir' '$flight_pid' '$advisor_pid'" \
+    >"$run/sessions.csv" 2>"$run/session-check.log" <<'TARGET'
+set -eu
+cd "$1"
+kill -0 "$2"
+replacement=$(awk -F, '$2 == "SESSION" {pid = $3} END {print pid}' link.csv)
+case "$replacement" in ''|*[!0-9]*|0|1) exit 1 ;; esac
+[ "$replacement" != "$3" ]
+pidin -P "$replacement" -F '%a %N' |
+    awk -v target="$replacement" '$1 == target && $2 == "MlAdvisor" {found=1} END {exit !found}'
+awk -F, '$2 == "SESSION" {print $3 "," $4}' link.csv
+TARGET
 
 if (( ui )); then
     printf 'GDS at http://localhost:%s. Press Enter here to continue with the reconnect check.\n' "${GDS_GUI_PORT:-5000}"
@@ -295,4 +326,10 @@ printf 'PASS FlightSW kept running and GDS reconnected\n'
 ssh "${ssh_opts[@]}" "root@$guest" "kill -TERM '$flight_pid'"
 wait "$target_pid" || fail 'FlightSW or SLM did not shut down cleanly'
 target_pid=
+python3 "$project/test/int/check-gds.py" "$run/capture" "$crash_event" "$crash_channel" "$advisor_pid" \
+    --sessions "$run/sessions.csv" >"$run/final-verdict.txt" 2>&1 || {
+        cat "$run/final-verdict.txt"
+        fail 'final GDS and advisor PID verification'
+    }
+grep -F 'PASS SLM replaced the advisor' "$run/final-verdict.txt"
 printf 'PASS FlightSW shutdown\n'

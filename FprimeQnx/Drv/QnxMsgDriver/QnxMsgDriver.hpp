@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <sys/dispatch.h>
+#include <sys/types.h>
 
 namespace Drv {
 
@@ -19,6 +20,8 @@ class QnxMsgDriver {
 
     bool open(bool server, const char* name);
     bool receive(std::uint8_t* payload, std::size_t capacity, std::size_t& size);
+    //! Kernel PID of the sender awaiting reply, or zero if no reply is pending.
+    pid_t pendingSenderPid() const { return m_pending != 0 ? m_senderPid : 0; }
     //! Wait up to 10 ms for an unblock pulse for the current request.
     bool waitForPendingUnblock();
     bool reply(const std::uint8_t* payload, std::size_t size);
@@ -34,6 +37,7 @@ class QnxMsgDriver {
     name_attach_t* m_attach = nullptr;
     int m_connection = -1;
     int m_pending = 0;
+    pid_t m_senderPid = 0;
 };
 
 }  // namespace Drv

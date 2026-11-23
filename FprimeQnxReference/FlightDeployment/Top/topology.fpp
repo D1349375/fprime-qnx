@@ -22,6 +22,7 @@ module M2Flight {
     priority 41
   instance posixTime: Svc.PosixTime base id 0x1500
   instance comDriver: Drv.TcpClient base id 0x1600
+  instance processMonitor: Svc.QnxProcessMonitor base id 0x1700
 
   deployment topology Flight {
     instance timer
@@ -37,6 +38,7 @@ module M2Flight {
     instance groundRate3
     instance posixTime
     instance comDriver
+    instance processMonitor
     instance CdhCore.Subtopology
     instance ComCcsds.Subtopology
 
