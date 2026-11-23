@@ -42,6 +42,9 @@ class QnxTimer final : public QnxTimerComponentBase {
     //! and rearm for the next future release on the same grid.
     void startTimerAt(const Fw::TimeInterval& interval, const struct timespec& firstRelease);
 
+    //! Preserve the receiving thread's priority on this timer's channel. Call before starting the timer.
+    void useFixedPriority() { m_fixedPriority = true; }
+
     //! Request the timer loop to exit. Async-signal-safe.
     void quit();
 
@@ -56,6 +59,7 @@ class QnxTimer final : public QnxTimerComponentBase {
 
     std::atomic<bool> m_quit;     //!< set by quit(), read by the timer loop
     std::atomic<int> m_coid;      //!< connection id used to send the wake-up pulse; -1 when not running
+    bool m_fixedPriority = false;
     int m_chid;                   //!< private channel id; -1 when not created
     timer_t m_timerId;            //!< POSIX timer
     bool m_timerCreated;          //!< true once timer_create succeeded

@@ -8,5 +8,6 @@ add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../lib/fprime" "F-Prime")
 
 add_fprime_subdirectory("${CMAKE_CURRENT_LIST_DIR}/Components/Link")
 add_fprime_subdirectory("${CMAKE_CURRENT_LIST_DIR}/Components/FlightCycle")
+add_fprime_subdirectory("${CMAKE_CURRENT_LIST_DIR}/Components/FlightGround")
 add_fprime_subdirectory("${CMAKE_CURRENT_LIST_DIR}/FlightDeployment")
 add_fprime_subdirectory("${CMAKE_CURRENT_LIST_DIR}/MlDeployment")

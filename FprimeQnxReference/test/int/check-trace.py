@@ -45,7 +45,7 @@ def check_restart(directory: Path, flight: dict[str, str], advisors: list[dict[s
     print(f"slm old_session={old} new_session={new} cycles_without_advice={first_new - last_old - 1}")
 
 
-def check(directory: Path, transport: str) -> None:
+def check(directory: Path, transport: str, fifo_priority: int = 30) -> None:
     flight_log = (directory / "flight.log").read_text(encoding="utf-8")
     advisor_log = (directory / "advisor.log").read_text(encoding="utf-8")
     flight, = read_fields(flight_log, "READY")
@@ -55,7 +55,7 @@ def check(directory: Path, transport: str) -> None:
     require(len(set(pids)) == len(pids), "processes used a repeated PID")
     expected_transport = "qnx" if transport == "slm" else transport
     require(all(entry["transport"] == expected_transport for entry in [flight, *advisors]), "unexpected transport")
-    require(flight["fifo_priority"] == "30", "flight did not start at priority 30")
+    require(int(flight["fifo_priority"]) == fifo_priority, f"flight did not start at priority {fifo_priority}")
     require(int(totals["record_drops"]) == 0, "the timing logger lost records")
 
     period = int(flight["period_ns"])
@@ -120,9 +120,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=Path)
     parser.add_argument("transport", choices=("udp", "qnx", "slm"))
+    parser.add_argument("--fifo-priority", type=int, default=30)
     args = parser.parse_args()
     try:
-        check(args.directory, args.transport)
+        check(args.directory, args.transport, args.fifo_priority)
     except (KeyError, OSError, ValueError) as error:
         parser.exit(1, f"M2 evidence check failed: {error}\n")
 

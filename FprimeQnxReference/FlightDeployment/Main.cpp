@@ -1,3 +1,5 @@
+#include <arpa/inet.h>
+#include <netdb.h>
 #include <csignal>
 #include <cinttypes>
 #include <chrono>
@@ -12,6 +14,7 @@
 #include <unistd.h>
 
 #include "Components/FlightCycle/FlightCycle.hpp"
+#include "Components/FlightGround/FlightGround.hpp"
 #include "Components/Link/Options.hpp"
 #include "Components/Link/Transport.hpp"
 #include "FlightDeployment/Top/FlightTopologyAc.hpp"
@@ -35,7 +38,8 @@ void writeTiming(M2::Handoff& handoff,
                  LinkTrace& linkTrace,
                  const std::atomic<bool>& logging,
                  FILE* file,
-                 FILE* events) {
+                 FILE* events,
+                 M2::FlightGround* ground) {
     const bool m3 = events != nullptr;
     const auto write = [file, m3](const M2::CycleRecord& row) {
         std::fprintf(file, "%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%d,%" PRIu64
@@ -58,17 +62,23 @@ void writeTiming(M2::Handoff& handoff,
         }
         std::fputc('\n', file);
     };
-    const auto writeNext = [&handoff, &linkTrace, &write, events]() {
+    const auto writeNext = [&handoff, &linkTrace, &write, events, ground]() {
         M2::CycleRecord row{};
         const bool hasCycle = handoff.records.pop(row);
         if (hasCycle) {
             write(row);
+            if (ground != nullptr) {
+                ground->observe(row);
+            }
         }
         LinkEvent entry{};
         const bool hasEvent = events != nullptr && linkTrace.pop(entry);
         if (hasEvent) {
             std::fprintf(events, "%" PRIu64 ",%s,%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n",
                          entry.ns, entry.event, entry.pid, entry.session, entry.cycle, entry.sample);
+            if (ground != nullptr) {
+                ground->observeLink(entry.event);
+            }
         }
         return hasCycle || hasEvent;
     };
@@ -261,11 +271,51 @@ void runLink(M2::Transport& transport,
     }
 }
 
+bool resolveGroundAddress(const char* hostname, char (&address)[INET_ADDRSTRLEN]) {
+    addrinfo hints{};
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    addrinfo* result = nullptr;
+    const int status = getaddrinfo(hostname, nullptr, &hints, &result);
+    if (status != 0) {
+        std::fprintf(stderr, "FlightSW resolve GDS host %s: %s\n", hostname, gai_strerror(status));
+        return false;
+    }
+    const auto* ip = reinterpret_cast<const sockaddr_in*>(result->ai_addr);
+    const bool resolved = inet_ntop(AF_INET, &ip->sin_addr, address, sizeof(address)) != nullptr;
+    freeaddrinfo(result);
+    if (!resolved) {
+        std::perror("FlightSW resolve GDS address");
+    }
+    return resolved;
+}
+
+bool configureGround(const M2Flight::TopologyState& state) {
+    if (M2Flight::comDriver.configure(state.hostname, state.port) != Drv::SOCK_SUCCESS) {
+        std::fprintf(stderr, "FlightSW configure GDS TCP client\n");
+        return false;
+    }
+    M2Flight::configComponents(state);
+    M2Flight::groundDriver.configure(Svc::RateGroupDriver::DividerSet{{{1, 0}, {2, 0}, {4, 0}}});
+    M2Flight::groundRate1.configure(Svc::ActiveRateGroup::ContextArray(0));
+    M2Flight::groundRate2.configure(Svc::ActiveRateGroup::ContextArray(0));
+    M2Flight::groundRate3.configure(Svc::ActiveRateGroup::ContextArray(0));
+    M2Flight::timer.useFixedPriority();
+    M2Flight::groundTimer.useFixedPriority();
+    M2Flight::regCommands();
+    return true;
+}
+
 Svc::QnxTimer* signalTimer = nullptr;
-volatile std::sig_atomic_t stopRequested = 0;
+Svc::QnxTimer* signalGroundTimer = nullptr;
+static_assert(ATOMIC_BOOL_LOCK_FREE == 2, "FlightSW signal handler needs lock-free atomics");
+std::atomic<bool> stopRequested{false};
 void stopFlight(int) {
-    stopRequested = 1;
+    stopRequested.store(true, std::memory_order_relaxed);
     signalTimer->quit();
+    if (signalGroundTimer != nullptr) {
+        signalGroundTimer->quit();
+    }
 }
 
 }  // namespace
@@ -275,7 +325,17 @@ int main(int argc, char** argv) {
     M2::Options options;
     if (!M2::parseOptions(argc, argv, true, options) ||
         (options.scenario == M2::Scenario::Transport && options.transport != M2::TransportKind::Qnx)) {
-        std::fprintf(stderr, "Usage: FlightSW [--transport udp|qnx] [--port N] [--cycles N] [--log PATH] [--m3 SCENARIO] [--link-log PATH] [--m4-seed N]\n");
+        std::fprintf(stderr, "Usage: FlightSW [--transport udp|qnx] [--port N] [--cycles N] [--log PATH] [--m3 SCENARIO] [--link-log PATH] [--m4-seed N] [--gds HOST:PORT]\n");
+        return 2;
+    }
+
+    const bool gds = options.gdsPort != 0;
+    if (gds && options.scenario == M2::Scenario::Legacy) {
+        std::fprintf(stderr, "FlightSW --gds requires --m3 SCENARIO\n");
+        return 2;
+    }
+    char groundAddress[INET_ADDRSTRLEN]{};
+    if (gds && !resolveGroundAddress(options.gdsHost.c_str(), groundAddress)) {
         return 2;
     }
 
@@ -310,7 +370,8 @@ int main(int argc, char** argv) {
 
     M2::Handoff handoff;
     M2::EstimateReceiver receiver;
-    M2Flight::initComponents(M2Flight::TopologyState{});
+    const M2Flight::TopologyState topology{groundAddress, options.gdsPort, {}, {}};
+    M2Flight::initComponents(topology);
     M2Flight::setBaseIds();
     M2Flight::connectComponents();
     M2Flight::hubLink.configure();
@@ -318,7 +379,14 @@ int main(int argc, char** argv) {
     auto& timer = M2Flight::timer;
     auto& flight = M2Flight::flight;
 
+    if (gds && !configureGround(topology)) {
+        M2Flight::deinitComponents(topology);
+        std::fclose(events);
+        std::fclose(file);
+        return 1;
+    }
     signalTimer = &timer;
+    signalGroundTimer = gds ? &M2Flight::groundTimer : nullptr;
     std::signal(SIGINT, stopFlight);
     std::signal(SIGTERM, stopFlight);
     std::atomic<bool> running{true};
@@ -328,6 +396,28 @@ int main(int argc, char** argv) {
     std::thread worker;
     std::thread logger;
     std::thread controller;
+    std::thread groundClock;
+    std::atomic<bool> groundStopping{false};
+    bool groundStarted = false;
+    bool groundClockOk = true;
+    const auto stopGround = [&]() {
+        groundStopping.store(true, std::memory_order_release);
+        if (groundClock.joinable()) {
+            M2Flight::groundTimer.quit();
+            groundClock.join();
+        }
+        if (groundStarted) {
+            M2Flight::comDriver.stop();
+            (void)M2Flight::comDriver.join();
+            M2Flight::stopTasks(topology);
+            M2Flight::freeThreads(topology);
+        }
+        if (gds) {
+            M2Flight::tearDownComponents(topology);
+            M2Flight::deinitComponents(topology);
+        }
+    };
+
     ReplyPause pause;
     const bool holdReply = options.scenario == M2::Scenario::Transport;
     try {
@@ -337,7 +427,29 @@ int main(int argc, char** argv) {
         worker = std::thread(runLink, std::ref(transport), std::ref(M2Flight::hubLink), std::ref(handoff),
                              std::cref(running), std::ref(counts), m3 ? &linkTrace : nullptr,
                              holdReply ? &pause : nullptr);
-        logger = std::thread(writeTiming, std::ref(handoff), std::ref(linkTrace), std::cref(logging), file, events);
+        logger = std::thread(writeTiming, std::ref(handoff), std::ref(linkTrace), std::cref(logging), file, events,
+                             gds ? &M2Flight::ground : nullptr);
+        if (gds) {
+            M2Flight::startTasks(topology);
+            groundStarted = true;
+            M2Flight::comDriver.start(Os::TaskString("GdsReceive"), 34, 64 * 1024);
+            groundClock = std::thread([&]() {
+                sched_param priority{};
+                priority.sched_priority = 44;
+                const int status = pthread_setschedparam(pthread_self(), SCHED_RR, &priority);
+                if (status == 0) {
+                    M2Flight::groundTimer.startTimer(Fw::TimeInterval(1, 0));
+                    groundClockOk = groundStopping.load(std::memory_order_acquire) ||
+                                    stopRequested.load(std::memory_order_relaxed);
+                } else {
+                    std::fprintf(stderr, "FlightSW configure ground SCHED_RR: %s\n", std::strerror(status));
+                    groundClockOk = false;
+                }
+                if (!groundClockOk) {
+                    timer.quit();
+                }
+            });
+        }
     } catch (const std::system_error& error) {
         std::fprintf(stderr, "FlightSW worker setup: %s\n", error.what());
         running.store(false, std::memory_order_release);
@@ -347,6 +459,11 @@ int main(int argc, char** argv) {
         if (controller.joinable()) {
             controller.join();
         }
+        logging.store(false, std::memory_order_release);
+        if (logger.joinable()) {
+            logger.join();
+        }
+        stopGround();
         if (events != nullptr) {
             std::fclose(events);
         }
@@ -355,7 +472,7 @@ int main(int argc, char** argv) {
     }
 
     sched_param priority{};
-    priority.sched_priority = 30;
+    priority.sched_priority = gds ? 60 : 30;
     const int scheduleStatus = pthread_setschedparam(pthread_self(), SCHED_FIFO, &priority);
     if (scheduleStatus == 0) {
         const auto firstRelease = M2::monotonicNs() + 100000000;
@@ -375,6 +492,7 @@ int main(int argc, char** argv) {
     }
     logging.store(false, std::memory_order_release);
     logger.join();
+    stopGround();
     bool eventsOk = true;
     if (events != nullptr) {
         eventsOk = std::fflush(events) == 0 && std::ferror(events) == 0;
@@ -382,8 +500,8 @@ int main(int argc, char** argv) {
     }
     const bool logOk = std::ferror(file) == 0 && std::fflush(file) == 0;
     const bool closed = std::fclose(file) == 0;
-    const bool ok = scheduleStatus == 0 && eventsOk && logOk && closed &&
-                    (options.cycles == 0 ? stopRequested != 0 : flight.complete());
+    const bool ok = scheduleStatus == 0 && groundClockOk && eventsOk && logOk && closed &&
+                    (options.cycles == 0 ? stopRequested.load(std::memory_order_relaxed) : flight.complete());
     std::printf("SUMMARY expected=%" PRIu64 " last_cycle=%" PRIu64 " record_drops=%" PRIu64
                 " accepted=%" PRIu64 " rejected=%" PRIu64 " result_drops=%" PRIu64 " timer_overruns=%" PRIu64,
                 options.cycles, flight.lastCycle(), flight.recordDrops(), counts.accepted, counts.rejected,
