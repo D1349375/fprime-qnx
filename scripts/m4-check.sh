@@ -10,6 +10,7 @@ integration="$project/test/int"
 usage() {
     cat <<'EOF'
 Usage: scripts/m4-check.sh QNX_APK_SYSROOT adcs-pilot|adcs
+       scripts/m4-check.sh QNX_APK_SYSROOT adcs-drift-host|adcs-drift
        scripts/m4-check.sh QNX_APK_SYSROOT adcs-pair [PAIRS] (default: 10)
        scripts/m4-check.sh QNX_APK_SYSROOT opssat [OPSSAT_V2_DIR]
 EOF
@@ -17,7 +18,7 @@ EOF
 if [[ $# == 1 && $1 == --help ]]; then usage; exit 0; fi
 if [[ $# -lt 2 || $# -gt 3 ]]; then usage >&2; exit 2; fi
 case "$2:$#" in
-    adcs-pilot:2|adcs:2|opssat:2|opssat:3) ;;
+    adcs-pilot:2|adcs:2|adcs-drift:2|adcs-drift-host:2|opssat:2|opssat:3) ;;
     adcs-pair:2|adcs-pair:3)
         pairs="${3:-10}"
         [[ "$pairs" =~ ^[1-9][0-9]*$ && "$pairs" == "$((pairs))" ]] || { echo 'Expected a positive pair count' >&2; exit 2; }
@@ -29,6 +30,8 @@ exec </dev/null
 : "${QNX_TARGET:?Source the QNX SDP environment first}"
 sysroot="$(realpath -e "$1")"
 mode="$2"
+drift=false
+if [[ "$mode" == adcs-drift || "$mode" == adcs-drift-host ]]; then drift=true; fi
 kernel_trace="${M4_KERNEL_TRACE:-0}"
 case "$mode:$kernel_trace" in
     *:0|adcs-pair:1|adcs-pilot:on-miss|adcs:on-miss|adcs-pair:on-miss) ;;
@@ -117,7 +120,12 @@ else
     schema=adcs-bias
     "${CXX:-c++}" -std=c++14 -O2 -Wall -Wextra -Werror -pedantic -I"$project" \
         "$fixture/generate-adcs.cpp" -o "$run/generate-adcs"
-    "$run/generate-adcs" >"$training/adcs.csv"
+    if "$drift"; then
+        schema=adcs-drift
+        "$run/generate-adcs" drift >"$training/adcs.csv"
+    else
+        "$run/generate-adcs" >"$training/adcs.csv"
+    fi
     data="$training/adcs.csv"
     if [[ "$mode" == adcs-pilot ]]; then pilot=(--pilot); fi
 fi
@@ -129,6 +137,22 @@ read -r -a host_flags <<<"$(pkg-config --cflags --libs armadillo openblas)"
 "${CXX:-c++}" -std=c++17 -O2 -DARMA_DONT_USE_OPENMP -I"$project" "${host_includes[@]}" \
     "$project/MlDeployment/Ffn.cpp" "$fixture/replay.cpp" -o "$run/replay-host" "${host_flags[@]}" \
     >"$run/host-build.log" 2>&1 || { tail -45 "$run/host-build.log" >&2; exit 1; }
+host_status=0
+"$run/replay-host" "$schema" "$training/model.txt" "$training/input.csv" \
+    >"$training/host.csv" 2>"$training/host-stderr.log" || host_status=$?
+if "$drift"; then
+    sha256sum "$training"/{adcs.csv,calibration.json} "$training"/calibration/{model.txt,input.csv,expected.csv} \
+        >>"$training/input.sha256"
+    "$run/replay-host" "$schema" "$training/model.txt" "$training/calibration/input.csv" \
+        >"$training/calibration/host.csv" 2>"$training/calibration/host-stderr.log"
+    "$python" "$fixture/compare.py" --host-only "$training/calibration" | tee "$training/calibration/host-summary.txt"
+    "$python" "$fixture/compare.py" --host-only "$training" | tee "$training/host-summary.txt"
+    [[ "$host_status" == 0 ]]
+    if [[ "$mode" == adcs-drift-host ]]; then exit 0; fi
+    drift_cutoff="$("$python" -c 'import json, sys; print(json.load(open(sys.argv[1]))["fdir"]["cutoff"])' \
+        "$training/calibration.json")"
+fi
+
 targets=(m4-replay)
 if [[ "$mode" != opssat ]]; then targets+=(FlightSW MlAdvisor); fi
 (
@@ -203,9 +227,15 @@ for file in model.txt input.csv; do
 done
 target_environment="LD_LIBRARY_PATH='$remote/runtime' OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1"
 
-host_status=0
-"$run/replay-host" "$schema" "$training/model.txt" "$training/input.csv" \
-    >"$training/host.csv" 2>"$training/host-stderr.log" || host_status=$?
+if "$drift"; then
+    scp -q "${ssh_opts[@]}" "$training/calibration/input.csv" "$target:$remote/calibration.csv"
+    ssh "${ssh_opts[@]}" "$target" "cat '$remote/calibration.csv'" | cmp -s "$training/calibration/input.csv" -
+    timeout -k 5s 45s ssh "${ssh_opts[@]}" "$target" \
+        "$target_environment '$remote/m4-replay' '$schema' '$remote/model.txt' '$remote/calibration.csv'" \
+        >"$training/calibration/qnx.csv" 2>"$training/calibration/qnx-stderr.log"
+    "$python" "$fixture/compare.py" "$training/calibration" | tee "$training/calibration/summary.txt"
+fi
+
 qnx_status=0
 timeout -k 5s 60s ssh "${ssh_opts[@]}" "$target" \
     "cd '$remote' && $target_environment ./m4-replay '$schema' model.txt input.csv" \
@@ -274,6 +304,10 @@ run_scenario() {
         'slm_backoff_s=1' >"$round/config.txt"
     command=(ssh "${ssh_opts[@]}" "$target"
         "$target_environment sh '$remote/$target_runner' '$remote' '$scenario' '$repair' '$seed' '$advisor'")
+    if "$drift"; then
+        printf 'drift_cutoff=%s\n' "$drift_cutoff" >>"$round/config.txt"
+        command[-1]+=" '$drift_cutoff'"
+    fi
     if [[ "$kernel_trace" == on-miss ]]; then
         command[-1]="M4_TRACE_WATCH=1 ${command[-1]}"
         command=("$python" "$integration/watch-m4.py" "$host_tracefs" "$round" "$qemu_pid" "$image"
@@ -303,8 +337,10 @@ run_scenario() {
         fi
     fi
     "$python" "$integration/check-m3.py" "$round" >"$round/timing.txt" 2>&1 || timing=$?
-    "$python" "$fixture/assess-adcs.py" "$training" "$round" >"$round/adcs.json" 2>"$round/adcs.err" || assessment=$?
-    if (( timing == 2 )); then
+    local assessor=assess-adcs.py
+    if "$drift"; then assessor=assess-drift.py; fi
+    "$python" "$fixture/$assessor" "$training" "$round" >"$round/adcs.json" 2>"$round/adcs.err" || assessment=$?
+    if (( timing == 2 )) || { "$drift" && (( timing == 0 && assessment == 2 )); }; then
         verdict=INDETERMINATE
     elif (( rc || timing || assessment )); then
         verdict=FAIL
@@ -317,17 +353,18 @@ run_scenario() {
 }
 
 run_seed() {
-    local seed="$1"
+    local seed="$1" scenario=recovery fault=bias
+    if "$drift"; then scenario=drift; fault=drift; fi
     if (( seed % 2 == 0 )); then
         run_scenario "$seed-learned-nominal" "$seed" normal normal learned
         run_scenario "$seed-fdir-nominal" "$seed" fdir_normal normal fdir
-        run_scenario "$seed-learned-bias" "$seed" recovery recovery learned
-        run_scenario "$seed-fdir-bias" "$seed" fdir_recovery recovery fdir
+        run_scenario "$seed-learned-$fault" "$seed" recovery "$scenario" learned
+        run_scenario "$seed-fdir-$fault" "$seed" fdir_recovery "$scenario" fdir
     else
         run_scenario "$seed-fdir-nominal" "$seed" fdir_normal normal fdir
         run_scenario "$seed-learned-nominal" "$seed" normal normal learned
-        run_scenario "$seed-fdir-bias" "$seed" fdir_recovery recovery fdir
-        run_scenario "$seed-learned-bias" "$seed" recovery recovery learned
+        run_scenario "$seed-fdir-$fault" "$seed" fdir_recovery "$scenario" fdir
+        run_scenario "$seed-learned-$fault" "$seed" recovery "$scenario" learned
     fi
 }
 
@@ -357,6 +394,10 @@ if [[ "$mode" == adcs-pair ]]; then
         printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$block" "$seed" "${groups[0]}" "$q1" "$q2" "$config_status" \
             >>"$run/pairs.tsv"
     done
+elif [[ "$mode" == adcs-drift ]]; then
+    for seed in 3101 3102 3103 3104; do run_seed "$seed"; done
+    "$python" "$fixture/assess-drift.py" --pairs "$run" >"$run/drift-pairs.json" || result=1
+    printf 'ADCS slow drift pairs: %s\n' "$run/drift-pairs.json"
 elif [[ "$mode" == adcs-pilot ]]; then
     run_seed 2001
     run_scenario 2001-q1-01 2001 q1 crash learned

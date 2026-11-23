@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-case "$#" in 3|5) ;; *) exit 2 ;; esac
+case "$#" in 3|5|6) ;; *) exit 2 ;; esac
 target_dir="$1"
 case "$target_dir" in /tmp/fprime-m3.*) ;; *) exit 2 ;; esac
 suffix="${target_dir#/tmp/fprime-m3.}"
@@ -10,22 +10,34 @@ cd "$target_dir"
 scenario="$2"
 repair="$3"
 case "$scenario:$repair" in
-    normal:restart|crash:restart|crash:none|stall:restart|gate:restart|geometry:restart|transport:restart|recovery:restart) ;;
+    normal:restart|crash:restart|crash:none|stall:restart|gate:restart|geometry:restart|transport:restart|recovery:restart|drift:restart) ;;
     *) exit 2 ;;
 esac
 
 flight_options=
 advisor_options=
 entry=m3
-if [ "$#" -eq 5 ]; then
+if [ "$#" -ge 5 ]; then
     case "$4" in ''|0|*[!0-9]*) exit 2 ;; esac
     flight_options=" --m4-seed $4"
-    case "$scenario:$5" in
-        normal:fdir|recovery:fdir) entry=flight ;;
-        normal:learned|recovery:learned|crash:learned) advisor_options=" --model $target_dir/model.txt" ;;
-        *) exit 2 ;;
-    esac
+    if [ "$#" -eq 6 ]; then
+        case "$6" in ''|*[!0-9.eE+-]*) exit 2 ;; esac
+        flight_options="$flight_options --drift-cutoff $6"
+        case "$scenario:$5" in
+            normal:fdir|drift:fdir) entry=flight ;;
+            normal:learned|drift:learned) advisor_options=" --drift-model $target_dir/model.txt" ;;
+            *) exit 2 ;;
+        esac
+    else
+        case "$scenario:$5" in
+            normal:fdir|recovery:fdir) entry=flight ;;
+            normal:learned|recovery:learned|crash:learned) advisor_options=" --model $target_dir/model.txt" ;;
+            *) exit 2 ;;
+        esac
+    fi
 fi
+
+if [ "$scenario" = drift ] && [ "$#" -ne 6 ]; then exit 2; fi
 
 control="/dev/slm-fprime-m3-$suffix"
 export LD_LIBRARY_PATH="$target_dir/slm-libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"

@@ -6,6 +6,7 @@ from collections import Counter, defaultdict
 import csv
 import hashlib
 import json
+import shutil
 from pathlib import Path
 import sys
 
@@ -29,6 +30,8 @@ OPSSAT_FEATURES = (
     "diff_peaks", "diff2_peaks", "diff_var", "diff2_var", "kurtosis", "skew",
 )
 ADCS_FEATURES = ("x", "y", "z", "xy", "residual")
+DRIFT_SEEDS = {"fit": range(1101, 1117), "validation": range(2101, 2117), "test": range(3101, 3105)}
+DRIFT_CALIBRATION_MARGIN = 1e-8
 
 
 def csv_rows(path):
@@ -111,6 +114,37 @@ def adcs_splits(source):
     return splits
 
 
+def drift_splits(source):
+    expected = {
+        (split, seed, fault, cycle)
+        for split, seeds in DRIFT_SEEDS.items()
+        for seed in seeds
+        for fault in ((0,) if split == "validation" else (0, 1))
+        for cycle in range(1, 231)
+    }
+    splits = defaultdict(list)
+    for row in csv_rows(source):
+        split, seed, fault, cycle = row["split"], int(row["seed"]), int(row["drift"]), int(row["cycle"])
+        key = split, seed, fault, cycle
+        if key not in expected or int(row["label"]) != int(fault == 1 and cycle >= 55):
+            raise ValueError(f"Unexpected drift fixture row {key}")
+        expected.remove(key)
+        row["label"] = int(row["label"])
+        row["case"] = f"{seed}-{fault}-{cycle}"
+        splits[split].append(row)
+    if expected:
+        raise ValueError(f"Missing {len(expected)} drift fixture rows")
+    return splits
+
+
+def drift_cutoff(scores):
+    maximum = float(np.max(scores))
+    cutoff = maximum + DRIFT_CALIBRATION_MARGIN
+    if not 0.0 <= maximum < cutoff <= 1.0:
+        raise ValueError("No eligible cutoff for the zero-alert healthy calibration")
+    return cutoff
+
+
 def matrix(rows, features):
     values = np.array([[float(row[name]) for name in features] for row in rows])
     if not np.isfinite(values).all():
@@ -160,9 +194,13 @@ def freeze(schema, model, threshold, compression, center, spread, path):
 
 
 def train(schema, source, out, pilot):
-    adcs = schema == "adcs-bias"
+    drift = schema == "adcs-drift"
+    adcs = schema in {"adcs-bias", "adcs-drift"}
     features = ADCS_FEATURES if adcs else OPSSAT_FEATURES
-    splits = adcs_splits(source) if adcs else opssat_splits(source)
+    if drift:
+        splits = drift_splits(source)
+    else:
+        splits = adcs_splits(source) if adcs else opssat_splits(source)
     fit, validation = splits["fit"], splits["validation"]
     x_fit = matrix(fit, features)
     compression = np.zeros(len(features))
@@ -183,11 +221,29 @@ def train(schema, source, out, pilot):
     x_val = (compress(matrix(validation, features), compression) - center) / spread
     val_scores = model.predict_proba(x_val)[:, 1]
     truth = labels(validation)
-    cutoff = validation_threshold(truth, val_scores, zero_false_positives=adcs)
+    cutoff = drift_cutoff(val_scores) if drift else validation_threshold(truth, val_scores, zero_false_positives=adcs)
     val_labels = val_scores >= cutoff
-    if adcs and np.any(val_labels != truth):
+    if schema == "adcs-bias" and np.any(val_labels != truth):
         raise ValueError("The bias model did not separate the ADCS validation trajectories")
     freeze(schema, model, cutoff, compression, center, spread, out / "model.txt")
+    if drift:
+        residuals = matrix(validation, ("fdir_residual",)).ravel()
+        fdir_cutoff = drift_cutoff(residuals)
+        (out / "calibration.json").write_text(json.dumps({
+            "healthy_snapshots": len(validation),
+            "seeds": list(DRIFT_SEEDS["validation"]),
+            "false_alert_cap": 0,
+            "margin": DRIFT_CALIBRATION_MARGIN,
+            "fdir": {"cutoff": fdir_cutoff, "healthy_max": float(np.max(residuals)),
+                     "healthy_alerts": int(np.count_nonzero(residuals >= fdir_cutoff))},
+            "learned": {"cutoff": cutoff, "healthy_max": float(np.max(val_scores)),
+                        "healthy_alerts": int(np.count_nonzero(val_labels))},
+            "fit_rng_seed": model.random_state,
+        }, indent=2) + "\n", encoding="utf-8")
+        calibration = out / "calibration"
+        calibration.mkdir()
+        shutil.copyfile(out / "model.txt", calibration / "model.txt")
+        emit_replay(calibration, validation, matrix(validation, features), val_scores)
     partition = {
         name: {"nominal": sum(row["label"] == 0 for row in rows),
                "anomaly": sum(row["label"] == 1 for row in rows)}
@@ -215,25 +271,29 @@ def train(schema, source, out, pilot):
     holdout = validation if pilot else splits["test"]
     x_test = matrix(holdout, features)
     scores = model.predict_proba((compress(x_test, compression) - center) / spread)[:, 1]
+    emit_replay(out, holdout, x_test, scores)
+
+
+def emit_replay(out, rows, values, scores):
     with (out / "input.csv").open("w", newline="", encoding="utf-8") as inputs, \
          (out / "expected.csv").open("w", newline="", encoding="utf-8") as expected:
         x_writer = csv.writer(inputs, lineterminator="\n")
         y_writer = csv.writer(expected, lineterminator="\n")
         y_writer.writerow(("case", "truth", "reference_score"))
-        for row, vector, score in zip(holdout, x_test, scores):
+        for row, vector, score in zip(rows, values, scores):
             x_writer.writerow((row["case"], *(format(value, ".17g") for value in vector)))
             y_writer.writerow((row["case"], row["label"], format(score, ".17g")))
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("schema", choices=["adcs-bias", "opssat-segment"])
+    parser.add_argument("schema", choices=["adcs-bias", "adcs-drift", "opssat-segment"])
     parser.add_argument("source", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--pilot", action="store_true")
     args = parser.parse_args()
     if args.pilot and args.schema != "adcs-bias":
-        parser.error("--pilot requires the ADCS generator")
+        parser.error("--pilot requires the ADCS bias fixture")
     with threadpool_limits(limits=1):
         train(args.schema, args.source, args.output, args.pilot)
 

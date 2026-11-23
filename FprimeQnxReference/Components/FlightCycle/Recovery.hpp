@@ -8,7 +8,7 @@
 
 namespace M2 {
 
-enum class Scenario { Legacy, Normal, Crash, Stall, Gate, Geometry, Transport, Recovery };
+enum class Scenario { Legacy, Normal, Crash, Stall, Gate, Geometry, Transport, Recovery, Drift };
 constexpr std::uint64_t InjectionCycle = 55;
 constexpr std::uint64_t RejectionWindowNs = 1000000000;
 constexpr std::uint64_t IsolationNs = 1200000000;
@@ -156,9 +156,12 @@ inline bool consistent(const Fit& fit) {
            std::abs(std::sqrt(dot(fit.vector, fit.vector)) - 1.0) <= 0.05;
 }
 
+inline double sensorResidual(const SensorReadings& samples, unsigned channel, const Fit& alternate) {
+    return std::abs(samples[channel] / 1000.0 - dot(alternate.vector, SensorDirections[channel]));
+}
+
 inline bool confirmsFault(const SensorReadings& samples, unsigned channel, const Fit& alternate) {
-    return consistent(alternate) && samples[channel] != 0 &&
-           std::abs(samples[channel] / 1000.0 - dot(alternate.vector, SensorDirections[channel])) >= 0.12;
+    return consistent(alternate) && samples[channel] != 0 && sensorResidual(samples, channel, alternate) >= 0.12;
 }
 
 class Recovery {
@@ -176,6 +179,16 @@ class Recovery {
             }
         }
         updatePersistence(candidate, m_fdirCandidate, m_fdirCount);
+    }
+
+    bool observeChannel(const SensorReadings& samples, unsigned channel, double alertCutoff) {
+        const unsigned mask = 1U << channel;
+        const auto alternate = fitSun(samples, mask);
+        const bool alert = sensorResidual(samples, channel, alternate) >= alertCutoff;
+        // A calibrated warning can precede the independent evidence needed for a proposal.
+        const bool propose = alert && !(m_excluded & mask) && confirmsFault(samples, channel, alternate);
+        updatePersistence(propose ? static_cast<int>(channel) : NoChannel, m_fdirCandidate, m_fdirCount);
+        return alert;
     }
 
     int fdirCandidate() const {

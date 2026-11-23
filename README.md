@@ -146,6 +146,39 @@ denominator, as well as segment classification metrics and inference latency.
 ADCS records target traces in guest shared memory during each flight. It exports them with
 `results.tsv` and the per-run timing and recovery reports.
 
+### Compare ADCS detection on slow sensor drift
+
+Use the M4 development environment above. The host mode freezes the cutoffs and
+checks the native FFN replay. The target mode repeats those checks before
+starting a fresh QNX guest.
+
+~~~bash
+scripts/m4-check.sh "$HOME/e6-qnx-x86_64" adcs-drift-host
+scripts/m4-check.sh "$HOME/e6-qnx-x86_64" adcs-drift
+~~~
+
+This fixture adds a ramp to channel 0 with a slope fixed by each seed, starting
+at the same injection cycle as the fixed-bias case. The FFN and the conventional
+leave-one-out residual both use that channel hypothesis and causal sensor
+snapshots. The cutoffs are fixed above the maximum scores on healthy calibration
+seeds, with a zero observed false-alert limit. The runner evaluates independent
+healthy and drift cases and alternates the FDIR-only and learned-advisor order.
+
+An early warning can precede the independent confirmation for an exclusion
+proposal. Both paths use the existing RecoveryGate for action, geometry and
+consistency checks. The live paths retain their usual polling and persistence
+cadence. Offline replay also compares warning snapshots on identical input.
+
+Recompute the local per-seed report with the script below. It records the first
+valid warning and its source snapshot, the acting gate, channel isolation,
+simulated sun-vector error, stable recovery and the original run verdict.
+Use [D62](docs/決策與變更紀錄.md#d62--calibrate-and-pair-the-slow-drift-detectors-2026-11-24)
+for the limits of the comparison.
+
+~~~bash
+"$M4_PYTHON" FprimeQnxReference/test/m4/assess-drift.py --pairs RUN_DIR
+~~~
+
 ### Run the ADCS fault benchmark
 
 In the M4 environment above, from an initialized checkout, run the paired experiment.

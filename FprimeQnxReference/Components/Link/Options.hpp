@@ -18,7 +18,9 @@ struct Options {
     Scenario scenario = Scenario::Legacy;
     const char* linkLog = "link.csv";
     std::uint64_t replaySeed = 0;
+    double driftCutoff = 0.0;
     const char* model = nullptr;
+    bool driftModel = false;
     const char* crashMarker = nullptr;
     std::string gdsHost;
     std::uint16_t gdsPort = 0;
@@ -35,7 +37,7 @@ inline bool readUnsigned(const char* text, std::uint64_t& value) {
 }
 
 inline bool readScenario(const char* text, Scenario& scenario) {
-    const char* const names[] = {"normal", "crash", "stall", "gate", "geometry", "transport", "recovery"};
+    const char* const names[] = {"normal", "crash", "stall", "gate", "geometry", "transport", "recovery", "drift"};
     for (unsigned i = 0; i < sizeof(names) / sizeof(names[0]); ++i) {
         if (std::strcmp(text, names[i]) == 0) {
             scenario = static_cast<Scenario>(i + 1);
@@ -70,8 +72,17 @@ inline bool parseOptions(int argc, char** argv, bool flight, Options& options) {
             options.gdsPort = static_cast<std::uint16_t>(number);
         } else if (flight && std::strcmp(key, "--m4-seed") == 0 && readUnsigned(value, number) && number != 0) {
             options.replaySeed = number;
-        } else if (!flight && std::strcmp(key, "--model") == 0 && *value != '\0') {
+        } else if (flight && std::strcmp(key, "--drift-cutoff") == 0) {
+            char* end = nullptr;
+            const double cutoff = std::strtod(value, &end);
+            if (*end != '\0' || !(cutoff > 0.0 && cutoff <= 1.0)) {
+                return false;
+            }
+            options.driftCutoff = cutoff;
+        } else if (!flight && *value != '\0' &&
+                   (std::strcmp(key, "--model") == 0 || std::strcmp(key, "--drift-model") == 0)) {
             options.model = value;
+            options.driftModel = std::strcmp(key, "--drift-model") == 0;
         } else if (!flight && std::strcmp(key, "--crash-marker") == 0 && *value != '\0') {
             options.crashMarker = value;
         } else if (flight && std::strcmp(key, "--link-log") == 0 && *value != '\0') {
@@ -86,6 +97,10 @@ inline bool parseOptions(int argc, char** argv, bool flight, Options& options) {
     }
     if (!flight && ((options.scenario == Scenario::Crash) != (options.crashMarker != nullptr))) {
         return false;
+    }
+    if (options.scenario == Scenario::Drift || options.driftCutoff > 0.0 || options.driftModel) {
+        const bool configured = flight ? options.replaySeed != 0 && options.driftCutoff > 0.0 : options.driftModel;
+        return configured && (options.scenario == Scenario::Normal || options.scenario == Scenario::Drift);
     }
     return (options.replaySeed == 0 && options.model == nullptr) || options.scenario == Scenario::Normal ||
            options.scenario == Scenario::Recovery || options.scenario == Scenario::Crash;
