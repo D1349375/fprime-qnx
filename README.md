@@ -1,216 +1,137 @@
+
 # F Prime on QNX
 
-[![Host checks](https://github.com/D1349375/fprime-qnx/actions/workflows/host-checks.yml/badge.svg)](https://github.com/D1349375/fprime-qnx/actions/workflows/host-checks.yml)
+F Prime on QNX ports NASA/JPL's flight software framework to QNX 8.0 as a reusable
+platform library. Upstream Ref exchanges commands, events and telemetry with F Prime
+GDS. In a simulated attitude determination and control system (ADCS), native QNX IPC
+and supervised restart exercise fault detection, isolation and recovery (FDIR)
+and the return of a separate onboard machine learning advisor.
 
-Host checks only. QNX build and run evidence is reproduced locally with the SDK.
+[For judges](#for-judges) · [Demo](#see-it-work) · [QNX Evidence Index](docs/en/evidence-index.md) ·
+[Reproduce](docs/en/reproduce.md) · [Adopt](docs/en/adopt.md) · [Limitations](#limitations)
 
-This project ports NASA/JPL F Prime to QNX 8.0 for the QNX Global Hackathon **Open-Source Contribution & Ports** category. The port provides a reusable platform library. Upstream Ref demonstrates adoption, and a separate simulated ADCS reference deployment exercises two-process communication, timing, and advisor recovery. A deterministic advisor exercises the recovery gate and fault handling. See the implementation log for validation status.
+## At a glance
 
-## Bring-up status
+| Item | Details |
+| --- | --- |
+| Category | Open-Source Contribution & Ports. [QNX Global Hackathon rules](https://qnx.devpost.com/rules) |
+| Upstream | Standalone port with [`nasa/fprime` v4.4.2](https://github.com/nasa/fprime/tree/f22ce8f2f2943e641d454e9daa7f129e6c878d32) as a submodule at `f22ce8f2f2943e641d454e9daa7f129e6c878d32`. |
+| Upstream contribution | Platform discussion and UART issue drafted. Posting and public URLs are pending. [Status](docs/en/upstream.md) |
+| QNX target | QNX SDP 8.0.6 and QNX 8.0.0 x86-64 on QEMU/KVM under Ubuntu 24.04 and WSL2. [Coverage](docs/en/evidence-index.md#target-and-host-coverage) |
+| Toolchain | `qcc` GCC 12.2.0, CMake and `fprime-util`. [Host setup](docs/en/host-setup.md) |
+| License | [Apache-2.0](LICENSE) |
+| CI | [![Host checks](https://github.com/D1349375/fprime-qnx/actions/workflows/host-checks.yml/badge.svg)](https://github.com/D1349375/fprime-qnx/actions/workflows/host-checks.yml) Host checks only. |
 
-The x86-64 toolchain, QNX platform library, and pulse-driven `QnxTimer` run the upstream F Prime v4.4.2 `Ref` deployment on QNX 8.0 under QEMU/KVM. The ground data system (GDS) sends `CMD_NO_OP` and receives its two events and rate group 1 telemetry. The M2 reference also runs two F Prime deployments using simulated sun sensors and deterministic advice. The [implementation log](docs/實作迭代紀錄.md) records platform and reference-deployment evidence.
+## Why
 
-Start with the [ASUS VivoBook X409JP setup guide](docs/setup-asus-vivobook.md). It covers Ubuntu on WSL2, KVM, QNX SDP, headless QEMU, and the F Prime tooling.
+Flight software teams that already use F Prime need a starting point for bringing
+an existing deployment to a QNX target. NASA's separate cFS project has QNX
+multi-target build work in progress. QNX is absent from F Prime's published supported
+and planned platform lists. [NASA cFS QNX build work](https://github.com/nasa/cFS/pull/1114) ·
+[F Prime supported platforms](https://fprime.jpl.nasa.gov/latest/docs/user-manual/framework/supported-platforms/)
 
-## Reproduce M1
+FlightSW has to produce an estimate even when an advisor is busy or unavailable.
+The reference deployment uses QNX timer pulses for periodic work, native request/reply
+between the processes and SLM to supervise the advisor. A bounded handoff keeps
+IPC off the periodic flight path and FlightSW controls which advice it uses.
+[Architecture](docs/en/architecture.md) · [Evidence of QNX use](#evidence-of-qnx-use)
 
-In Ubuntu, activate the F Prime virtual environment and source the local QNX SDP 8.0 environment. Set up the libvirt `default` network and QEMU bridge as described in the ASUS guide. Clone a revision that includes the validation scripts, then run:
+## What's in the box
+
+| Part | What it provides |
+| --- | --- |
+| [FprimeQnx](FprimeQnx) | x86-64 toolchain, QNX platform selection, a pulse-driven rate-group timer and a native message driver. |
+| [Ref adoption](adoption/ref-qnx.patch) | An upstream deployment example and a clean QNX build-and-GDS check. |
+| [ADCS reference](FprimeQnxReference) | Two F Prime processes, simulated coarse sun sensors, deterministic FDIR and RecoveryGate, and opt-in F Prime GDS. |
+| [ML inference](FprimeQnxReference/MlDeployment/Ffn.cpp) | An optional mlpack FFN with frozen weights and an offline replay path. |
+| [Evidence tools](docs/en/reproduce.md) | Target runners, case verifiers and an application-behavior summary for the restart experiment. |
+
+![F Prime on QNX runtime architecture](docs/img/architecture.svg)
+
+## For judges
+
+| Criterion | What to inspect |
+| --- | --- |
+| Technological implementation | The pinned [timer and IPC source](#evidence-of-qnx-use), [target OSAL results](docs/en/results.md#osal-v1), [fault case verifier](FprimeQnxReference/test/int/check-m3.py) and [host CI scope](docs/en/reproduce.md#sdk-free-host-checks). |
+| Design | A clean [Ref command round trip](docs/en/reproduce.md#ref-and-gds-v2-and-v2b), [ADCS ground commands and events](docs/en/reproduce.md#adcs-ground-system), and a [recomputable application-behavior report](docs/en/reproduce.md#m4-paired-repair-policy-check). |
+| Potential impact | Reuse the platform in an existing F Prime deployment through the [adoption guide](docs/en/adopt.md) and follow the [upstream status](docs/en/upstream.md) for portability work. |
+| Innovation & AI Creativity | A separate learned advisor tests the process and recovery boundary. The [inference check](docs/en/results.md#trained-advisor-and-offline-replay) verifies agreement between Linux and QNX. The [paired harness](docs/en/reproduce.md#m4-paired-repair-policy-check) varies the SLM repair setting with the workload and model fixed. |
+| Best use of QNX-specific technologies | Trace the implementation and reproduction check for each [QNX mechanism](docs/en/evidence-index.md#qnx-mechanisms). |
+
+## See it work
+
+Run the [ADCS GDS check](docs/en/reproduce.md#adcs-ground-system) to see the command
+acknowledgment, `FdirEngaged`, and `AdvisorAccepted` with a fresh session. The
+`ControlSource` channel goes from ML to FDIR and back to ML. The submission video
+will be linked here after recording.
+
+## Evidence of QNX use
+
+| Mechanism | Fixed source | What to check |
+| --- | --- | --- |
+| Timer and pulses | [QnxTimer](https://github.com/D1349375/fprime-qnx/blob/84e722f0ed0f67eec93860204451d048032af11d/FprimeQnx/Svc/QnxTimer/QnxTimer.cpp#L85-L139) | Ref returns rate group 1 telemetry to GDS. |
+| Native message passing | [QnxMsgDriver server and client](https://github.com/D1349375/fprime-qnx/blob/84e722f0ed0f67eec93860204451d048032af11d/FprimeQnx/Drv/QnxMsgDriver/QnxMsgDriver.cpp#L28-L141) | FlightSW and the advisor exchange snapshots and advice in different processes. |
+| Disconnect and unblock pulses | [Driver pulse handling](https://github.com/D1349375/fprime-qnx/blob/84e722f0ed0f67eec93860204451d048032af11d/FprimeQnx/Drv/QnxMsgDriver/QnxMsgDriver.cpp#L49-L95) | The held-reply case ties the unblock pulse to the pending receive ID. |
+| Process isolation and SLM | [SLM template](https://github.com/D1349375/fprime-qnx/blob/84e722f0ed0f67eec93860204451d048032af11d/FprimeQnxReference/qnx/m3-slm.xml.in#L2-L22) | FlightSW uses FDIR before accepting a result from the replacement session. |
+| Process death pulse and FIFO scheduling | [Test observer](https://github.com/D1349375/fprime-qnx/blob/84e722f0ed0f67eec93860204451d048032af11d/FprimeQnxReference/test/int/watch-death.c#L16-L50) · [Flight scheduling](https://github.com/D1349375/fprime-qnx/blob/84e722f0ed0f67eec93860204451d048032af11d/FprimeQnxReference/FlightDeployment/Main.cpp#L470-L489) | The test observer correlates advisor exit to a process. The ground harness checks the flight thread's scheduling policy. |
+| Shared memory and kernel instrumentation | [Crash marker](https://github.com/D1349375/fprime-qnx/blob/d96c9f5a3696e620c65c507f7552f2d9c007cb78/FprimeQnxReference/MlDeployment/Main.cpp#L154-L164) · [Local trace runner](https://github.com/D1349375/fprime-qnx/blob/d96c9f5a3696e620c65c507f7552f2d9c007cb78/FprimeQnxReference/test/int/run-m3-traced.sh#L8-L21) | The harness checks one-shot crash injection. The optional diagnostic runner captures local evidence. |
+
+The [QNX Evidence Index](docs/en/evidence-index.md) gives the target revisions,
+commands and acceptance checks. The standalone death observer is part of the fault
+harness. GDS shows the application fallback and session events.
+
+## Results
+
+| Check | Observed result |
+| --- | --- |
+| Ref and GDS | Clean cross-build and QNX boot, two NO-OP events and rate group 1 telemetry. [Ref results](docs/en/results.md#ref-and-adcs-ground-system) |
+| F Prime OSAL suites with the portability patch | 258 passed, 0 failed, 1 skipped across 17 suites. The guest lacks `/dev/full`. [Suite results](docs/en/results.md#osal-v1) |
+| ADCS fault cases | Separate FlightSW and advisor processes used UDP and native IPC. The fault matrix exercised FDIR, Gate rejection, sensor isolation and a held IPC reply. [Fault results](docs/en/results.md#deterministic-adcs) |
+| Trained advisor and offline inference | In the restart exercise, FlightSW accepted a replay-checked result from a new session and rejected old-session advice. The OPS-SAT replay matched scores within tolerance and produced matching labels on Linux and QNX. [Model and restart results](docs/en/results.md#trained-advisor-and-offline-replay) |
+
+## Adopt it
+
+1. Add `FprimeQnx` to `library_locations` in `settings.ini`.
+2. Activate the QNX tools and run `fprime-util generate qnx-x86_64`.
+3. Use `Svc.QnxTimer` for rate groups that use `Svc.LinuxTimer`.
+4. Review deployment-specific drivers and sequencers. Ref omits the Rust-dependent
+   `WasmSequencer` and keeps `cmdSeq`. [Adoption guide](docs/en/adopt.md)
+
+## Build and run
+
+Use Ubuntu 24.04, KVM and the libvirt guest network. Install QNX SDP 8.0.6
+and the F Prime tools as described in [Host setup](docs/en/host-setup.md).
 
 ```bash
+git clone --recurse-submodules https://github.com/D1349375/fprime-qnx.git
+cd fprime-qnx
+git checkout --detach 7d19287877e6a426d8481e90af07055667444ebd
+git submodule update --init --recursive
+source "$HOME/qnx800/qnxsdp-env.sh"
+source "$HOME/.venvs/fprime-qnx/bin/activate"
 scripts/clean-rebuild.sh
 ```
 
-The script clones the current checkout's committed revision into a new directory, initializes the pinned submodules, builds `Ref`, creates and boots an x86-64 QNX image, and runs the GDS check. It prints the directory containing the source revisions, build logs, and target evidence. [QNX mkqnximage reference](https://www.qnx.com/developers/docs/8.0/com.qnx.doc.neutrino.utilities/topic/m/mkqnximage.html)
+The [reproduction guide](docs/en/reproduce.md) covers OSAL, ADCS GDS, fault cases,
+model preparation, replay and SDK-free host checks.
 
-For the upstream OSAL suites, initialize the submodules with `git submodule update --init --recursive` and run `scripts/osal-check.sh`. It applies the [test portability patch](adoption/osal-test-portability.patch) to a staged copy of the pinned framework and provisions a new x86-64 QNX guest. Evidence and the default build cache go under `TMPDIR` or `/tmp`. Set `QNX_IMAGE_DIR` and `QNX_SSH_KEY` to use a provisioned image with sufficient space. `OSAL_BUILD_DIR` accepts a cache produced by the same staged test sources.
+## Limitations
 
-## Reproduce M2
-
-Use the same QNX and QEMU environment as M1, with the pinned submodules initialized and Python 3.9 or newer. Run these commands from the repository root for a fresh checkout.
-
-```bash
-(cd FprimeQnxReference && fprime-util generate qnx-x86_64 && fprime-util build qnx-x86_64 --jobs 2)
-scripts/m2-check.sh udp
-scripts/m2-check.sh qnx
-scripts/m2-check.sh slm
-```
-
-The `udp` and `qnx` checks delay the advisor to fill the bounded snapshot queue, then stop it during the 200-cycle flight run. The `slm` check uses the QNX IPC transport and kills the supervised advisor once. It checks for a new advisor process and session, expiry of old advice, and an uninterrupted flight trace. The harness stages the SLM utilities and libraries from the installed QNX SDK on the test guest. It renders a test copy of the [SLM template](FprimeQnxReference/qnx/m2-slm.xml.in) with process criticality disabled so the test can stop flight cleanly. [QNX SLM reference](https://www.qnx.com/developers/docs/8.0/com.qnx.doc.neutrino.utilities/topic/s/slm.html)
-
-Each command prints the evidence directory. `flight.csv` contains cycle ID, scheduled release, actual start, and the time at which FlightSW updates its internal sun estimate. All three timestamps use the guest's monotonic clock. `summary.txt` reports time from release to that estimate update and observed misses against the 20 ms period. The iteration log records the initial QEMU/KVM validation and the v0.3 clean regression. [M2 results](docs/實作迭代紀錄.md#i-12--v03-整合基準-qnx-客體重跑)
-
-## Reproduce M3 and E6
-
-Use Ubuntu 24.04 with the F Prime virtual environment and QNX SDP 8.0.6. Initialize the pinned submodules and reuse
-the M1 libvirt network setup. Run one pilot round before the full target validation.
-
-```bash
-git submodule update --init --recursive
-scripts/m3-check.sh 1
-scripts/m3-check.sh
-```
-
-M3 uses a deterministic advisor and simulated coarse sun sensors. Each run checks a no-fault baseline, SLM restart
-(Q1), SLM repair disabled (Q2), missing output with heartbeat, invalid advice, insufficient sensor geometry,
-a held native IPC reply with its unblock pulse, and successful sensor isolation. Q1 and Q2 use the same guest and
-binaries. The harness prints its evidence directory and writes the per-round verdicts to `results.tsv`. Use `python3 FprimeQnxReference/test/int/check-m3.py RUN_DIR`
-to recompute a single round from its config, flight and IPC CSVs, and advisor log. Q1 and Q2 additionally capture
-QNX process-manager death notifications in `death.csv`. The observer timestamps pulse reception independently of the
-flight and IPC workers. That timestamp bounds the exit time from above. See
-[M3 decisions](docs/決策與變更紀錄.md#d21--m3-飛行提交與故障驗收2026-11-20) for the pilot contract.
-
-E6 builds the same C++17 mlpack 4.7 FFN on Linux and QNX x86-64. On Ubuntu 24.04, install the Armadillo,
-OpenBLAS, cereal and ensmallen development packages. Use the upstream mlpack 4.7.0 headers. Set
-`E6_HOST_MLPACK_INCLUDE` if those headers are outside the Linux compiler's default search path.
-[mlpack 4.7.0 source](https://github.com/mlpack/mlpack/tree/d72d9191750cea213c5efadf959d264a7a622420)
-
-Source the installed QNX SDP 8.0.6, put Linux `apk-tools` 3.x on `PATH`, and use the M1 libvirt setup.
-The preparation script builds an isolated sysroot from signed QNX 8.0.3 APKs and links to the installed
-x86-64 SDK headers and libraries. Pass a fresh directory outside the checkout.
-[QNX APK sysroot codelab](https://qnx.github.io/codelabs/apk-based-cross-compile/index.html)
-
-```bash
-scripts/e6-prepare-sysroot.sh "$HOME/e6-qnx-x86_64"
-E6_HOST_MLPACK_INCLUDE="$HOME/mlpack-4.7.0/src" scripts/e6-check.sh "$HOME/e6-qnx-x86_64"
-```
-
-The runner also accepts an existing compatible x86-64 APK sysroot. It records source and package versions,
-loader output, weights hash, and score and label comparisons. On QNX x86-64, the fixed fixture matched
-the Linux results and the independent numerical reference. [E6 verification](docs/實作迭代紀錄.md#i-22--e6-固定權重推論驗收2026-11-20)
-
-## Reproduce the ADCS GDS check
-
-Build the QNX reference deployment as in M2, activate the F Prime environment, and source the QNX SDP.
-Then run these commands from the repository root.
-
-```bash
-scripts/gds-check.sh
-scripts/ground-timing-check.sh
-```
-
-The GDS check uses the M3 SLM template and the deterministic advisor. It sends `CMD_NO_OP`,
-stops the advisor, and checks FDIR engagement, acceptance of a new advisor session, and the
-control-source transitions. The test copy of the SLM configuration gives ground telemetry a sampling window during FDIR.
-It then restarts GDS and checks that the same FlightSW process
-continues and reconnects. Use `scripts/gds-check.sh --ui` and open the local GDS on port 5000
-to inspect Events and the `ControlSource` channel when the script pauses.
-
-`FlightSW --m3 normal --gds HOST:PORT` enables the command, event, and telemetry services.
-Use the generated `FlightTopologyDictionary.json` and the `space-packet-space-data-link` GDS
-framing configuration. `GDS_EVIDENCE_ROOT` selects an output directory outside the checkout.
-The timing script alternates GDS off and on with the same replay seed and writes its per-run
-evidence there. [GDS implementation and verification](docs/實作迭代紀錄.md#i-58--connect-flightsw-to-gds-2026-11-23)
-
-## Reproduce M4
-
-Use the M3 QNX x86-64 environment and the E6 APK sysroot. On Linux, use the mlpack 4.7.0
-headers and the E6 Armadillo and OpenBLAS development dependencies. Activate the F Prime
-environment and source the QNX SDP environment before running these commands.
-
-```bash
-python3 -m venv "$HOME/m4-training"
-"$HOME/m4-training/bin/pip" install -r FprimeQnxReference/test/m4/requirements.txt
-export M4_PYTHON="$HOME/m4-training/bin/python"
-export E6_HOST_MLPACK_INCLUDE="$HOME/mlpack-4.7.0/src"
-
-scripts/m4-check.sh "$HOME/e6-qnx-x86_64" adcs-pilot
-scripts/m4-check.sh "$HOME/e6-qnx-x86_64" adcs
-scripts/m4-check.sh "$HOME/e6-qnx-x86_64" opssat
-```
-
-Each invocation creates its own QNX guest and prints an evidence directory under `TMPDIR`
-or `/tmp`. Set `M4_QNX_BUILD_CACHE` to an external directory to reuse the cross-build cache.
-The `opssat` command downloads the pinned Zenodo files, or accepts a directory containing the
-same files and the Zenodo `record.json` as its third argument. The two experiments train
-separate one-hidden-layer FFNs and use the same C++17 inference code on Linux and QNX.
-[OPSSAT-AD v2 dataset](https://doi.org/10.5281/zenodo.15108715)
-
-For ADCS, the runner compares the FDIR control and learned advisor on matching seed,
-bias injection, and Gate conditions. It checks that each accepted live result matches
-the offline replay, then verifies FDIR fallback and SLM restart with the trained advisor.
-The pilot uses validation seeds. The formal run uses held-out seeds and performs ten crash
-trials. The default M3 build continues to use the deterministic advisor. The optional FFN
-build takes `-DFPRIME_QNX_M4_SYSROOT=/path/to/e6-sysroot` and enables `MlAdvisor --model PATH`.
-
-For OPSSAT-AD, only the author's training set supplies fitting and validation data. The
-author's test set is used after preprocessing, weights, and the threshold are frozen.
-Both commands write `replay/comparison.csv` with one row per expected case. `replay/summary.txt`
-reports inference failures and score and label differences using the full held-out
-denominator, as well as segment classification metrics and inference latency.
-ADCS records target traces in guest shared memory during each flight. It exports them with
-`results.tsv` and the per-run timing and recovery reports.
-
-### Run the ADCS fault benchmark
-
-In the M4 environment above, from an initialized checkout, run the paired experiment.
-
-~~~bash
-scripts/m4-check.sh "$HOME/e6-qnx-x86_64" adcs-pair
-~~~
-
-The default is ten interleaved pairs. Set the optional third argument for a shorter run.
-Each pair runs the same held-out seed and frozen FFN in one guest with fresh FlightSW and
-advisor processes. The SLM XML check verifies the advisor's repair policy in both arms.
-The fixed crash trigger is the first eligible snapshot from cycle 55 onward. The report
-shows the actual snapshot and injection offset for each arm. A per-run marker in QNX
-shared memory records that the advisor has claimed the injection. SLM's replacement
-uses the same marker, and the harness clears it before each new scenario.
-The timing checker records whether flight accepted its first advisor result by cycle 40.
-
-Add `M4_KERNEL_TRACE=1` before the command to capture the QNX memory ring in both arms.
-The ring is exported after each scenario. Use the SDP's `traceprinter` with
-`-n -p '%c|%C|%Z|%z|' -f trace.kev` to decode it. Each trace includes two guest clock anchors.
-
-To retain both scheduler traces when a deadline may have been missed, run
-`sudo scripts/m4-tracefs.sh "$(id -un)"` in a second Linux terminal and keep it open
-for the run. The helper prints a dedicated tracefs path. Pass that path to any ADCS
-mode, for example
-
-~~~bash
-M4_HOST_TRACEFS=/run/fprime-adcs-trace.REPLACE_ME M4_KERNEL_TRACE=on-miss \
-    scripts/m4-check.sh "$HOME/e6-qnx-x86_64" adcs-pair 2
-~~~
-
-The watcher reads the guest's existing, line-buffered flight records over a persistent
-SSH connection. A cycle gap, failed or late submission, loss of flight progress or
-a stalled guest reply retains the host ring. A responsive guest exports its QNX ring
-after a short recovery window. If a stalled observation resumes with the affected
-cycles on time, the watcher clears that provisional trigger and continues watching.
-`watch.json` gives the trigger, any observed deadline failure and capture status.
-The clock brackets in `clock-anchors.tsv` bound alignment.
-The watcher stores host scheduling events by QEMU thread name and records the test
-guest's local TIDs and CPU masks. Use one QEMU guest at a time for clear attribution
-when the kernel trace uses a different PID namespace. The original checker still
-computes the 20 ms verdict from the complete flight records. Healthy scenarios keep
-the watcher status and skip transferring the rings. Stop the tracefs helper when the
-test ends.
-
-Open `fault-report.md` in the printed evidence directory. It links to each round's
-configuration, original checker output, raw guest timeline, available trace, SDK
-packages and source and model revisions. The command returns a nonzero status if
-a verdict fails, a pair's XML differs outside the repair field, or a requested trace
-is incomplete. Store measured timing, deadline counts, paired results and traces in local
-evidence. The [project plan](docs/專案規劃書.md#94-授權與公開材料必做) defines the scope of public material.
-
-To generate an application-behavior summary from a recorded paired run, use
-
-~~~bash
-python3 -B FprimeQnxReference/test/m4/fault-report.py --public RUN_DIR
-~~~
+Target evidence covers an x86-64 QNX guest under WSL2 and QEMU/KVM. AArch64 has a
+toolchain file. AArch64 builds and execution and physical QNX hardware remain
+unverified. Repeated guest tests observed occasional missing cycles. ADCS uses
+simulated sensors and one learned fault family. The recorded exercise saw FDIR
+and the FFN first alert in the same cycle. Hosted CI runs on Linux.
+[Full limitations](docs/en/limitations.md)
 
 ## Project documents
 
-| Document | Contents |
-| --- | --- |
-| [Project plan v0.3](docs/專案規劃書.md) | Platform and adoption scope, M2 evidence, and formal fault validation |
-| [Decision log](docs/決策與變更紀錄.md) | Design decisions and the ASUS handoff |
-| [Implementation log](docs/實作迭代紀錄.md) | Iterations, validation evidence, and agent handoff |
-| [W1 environment log](docs/W1環境建置紀錄.md) | Host bring-up, toolchain, and QNX target results |
-| [Upstream notes](docs/upstream-notes.md) | F Prime portability findings and upstream candidates |
-| [Competition brief](docs/競賽資訊.md) | Rules and submission checklist from the initial research |
-| [QNX 8.0 constraints](docs/QNX8.0與開發限制.md) | Host, target, toolchain, and platform constraints |
-| [Ports candidates](docs/Ports候選專案.md) | Comparison that led to the F Prime choice |
-| [AI design research](docs/AI深化方向.md) | Telemetry data, anomaly detection, and recovery gate research |
-| [Previous QNX projects](docs/歷屆得獎作品調研.md) | Dated research on prior winners and published entries |
+[Architecture](docs/en/architecture.md) · [Results](docs/en/results.md) ·
+[Upstream status](docs/en/upstream.md) · [Glossary](docs/en/glossary.md) ·
+[Engineering logs (Traditional Chinese)](docs/zh/)
 
-Upstream framework and planned release are maintained by [NASA/JPL F Prime](https://github.com/nasa/fprime). The [Devpost official rules](https://qnx.devpost.com/rules) govern the submission.
+F Prime is developed by NASA/JPL. This independent project has no affiliation
+with NASA, JPL or BlackBerry QNX. The offline dataset is OPSSAT-AD v2 by Bogdan
+Ruszczak and collaborators, based on ESA OPS-SAT telemetry. The dataset record
+uses CC BY 4.0, and its files include a KP Labs MIT license.
+[Dataset and attribution](https://doi.org/10.5281/zenodo.15108715)
