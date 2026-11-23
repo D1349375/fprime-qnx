@@ -261,7 +261,7 @@ TARGET
 deadline=$((SECONDS + 30))
 until python3 "$project/test/int/check-gds.py" "$run/capture" "$crash_event" "$crash_channel" >"$run/verdict.txt" 2>&1; do
     kill -0 "$target_pid" 2>/dev/null || fail 'SLM stopped during the advisor restart'
-    (( SECONDS < deadline )) || { cat "$run/verdict.txt"; fail 'advisor restart was not observed in GDS'; }
+    (( SECONDS < deadline )) || { cat "$run/verdict.txt"; fail 'GDS event or telemetry verification failed after the advisor restart'; }
     sleep 0.2
 done
 cat "$run/verdict.txt"

@@ -86,7 +86,8 @@ scripts/ground-timing-check.sh
 
 The GDS check uses the M3 SLM template and the deterministic advisor. It sends `CMD_NO_OP`,
 stops the advisor, and checks FDIR engagement, acceptance of a new advisor session, and the
-control-source transitions. It then restarts GDS and checks that the same FlightSW process
+control-source transitions. The test copy of the SLM configuration gives ground telemetry a sampling window during FDIR.
+It then restarts GDS and checks that the same FlightSW process
 continues and reconnects. Use `scripts/gds-check.sh --ui` and open the local GDS on port 5000
 to inspect Events and the `ControlSource` channel when the script pauses.
 

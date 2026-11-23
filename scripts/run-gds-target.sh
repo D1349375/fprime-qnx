@@ -27,7 +27,13 @@ for file in flight.csv flight.log flight.err advisor.log advisor.err link.csv sl
     : > "$file"
 done
 flight_options=" --cycles $cycles --m4-seed $seed$gds"
+backoff=1
+if [ "$cycles" -eq 0 ] && [ -n "$gds" ]; then
+    # Give the ground telemetry rate group time to publish FDIR before SLM restarts the advisor.
+    backoff=3
+fi
 sed -e "s|@DIR@|$target_dir|g" -e 's/@SCENARIO@/normal/g' -e 's/@REPAIR@/restart/g' \
+    -e "s/backoff=\"1\"/backoff=\"$backoff\"/" \
     -e "s|@FLIGHT_OPTIONS@|$flight_options|g" -e 's|@ADVISOR_OPTIONS@||g' m3-slm.xml.in > gds-slm.xml
 ulimit -c 0 || true
 
