@@ -192,6 +192,12 @@ a verdict fails, a pair's XML differs outside the repair field, or a requested t
 is incomplete. Store measured timing, deadline counts, paired results and traces in local
 evidence. The [project plan](docs/專案規劃書.md#94-授權與公開材料必做) defines the scope of public material.
 
+To generate an application-behavior summary from a recorded paired run, use
+
+~~~bash
+python3 -B FprimeQnxReference/test/m4/fault-report.py --public RUN_DIR
+~~~
+
 ## Project documents
 
 | Document | Contents |

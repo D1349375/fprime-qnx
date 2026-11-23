@@ -98,7 +98,8 @@ def read_flight(directory, cycles, period):
     return ready, stats, records, releases
 
 
-def assess(directory):
+def assess(directory, recovery=None):
+    """Check the run and optionally collect Q1/Q2 behavior from its recovered records."""
     config = dict(line.split("=", 1) for line in (directory / "config.txt").read_text().splitlines())
     group = config["group"]
     advisor_expected = group not in {"fdir_normal", "fdir_recovery"}
@@ -158,13 +159,16 @@ def assess(directory):
     if not advisor_expected:
         require(not starts and not rejoined and not sessions and all(r["fdir"] for r in records),
                 "FDIR control unexpectedly used an advisor session")
+    fresh_rejoins = set()
     for row in rejoined:
         key = (row["checked_session"], row["checked_cycle"], row["checked_sample_ns"])
-        require(key in issued and key in queued and
-                key[0] == row["advisor_session"] and key[0] in sessions and
-                0 <= row["start_ns"] - key[2] <= freshness and
-                key[2] <= queued.get(key, 0) <= row["gate_ns"] <= row["finish_ns"],
-                "Rejoin does not match an issued and fresh result")
+        fresh_rejoin = (key in issued and key in queued and
+                        key[0] == row["advisor_session"] and key[0] in sessions and
+                        0 <= row["start_ns"] - key[2] <= freshness and
+                        key[2] <= queued.get(key, 0) <= row["gate_ns"] <= row["finish_ns"])
+        require(fresh_rejoin, "Rejoin does not match an issued and fresh result")
+        if fresh_rejoin:
+            fresh_rejoins.add(row["gate_ns"])
 
     for row in records:
         if row["submitted"] and row["valid"]:
@@ -186,14 +190,17 @@ def assess(directory):
         expected_ci = int(config["injection_cycle"])
         print(f"injection_ns={early} injection_cycle={ci} advisor_pid={injection['pid']} "
               f"old_session={original_session} flight_pid={ready['pid']} observation_end_ns={end}")
-        require(expected_ci <= ci <= expected_ci + 4, "Injection missed its fixed snapshot window")
+        in_window = expected_ci <= ci <= expected_ci + 4
+        require(in_window, "Injection missed its fixed snapshot window")
+        valid_crash = False
         if group in {"q1", "q2"}:
-            require(injection["pid"] == next(iter(starts), None) and
-                    sessions.get(original_session, {}).get("pid") == injection["pid"] and
-                    any(session == original_session and cycle == ci for session, cycle, _ in issued),
-                    "Crash was not triggered by an issued snapshot from the first advisor")
-            require(not any(row["fallback"] and 0 < row["fallback_ns"] < early for row in records),
-                    "Advisor entered FDIR before the scheduled crash")
+            from_first_advisor = (injection["pid"] == next(iter(starts), None) and
+                                  sessions.get(original_session, {}).get("pid") == injection["pid"] and
+                                  any(session == original_session and cycle == ci for session, cycle, _ in issued))
+            require(from_first_advisor, "Crash was not triggered by an issued snapshot from the first advisor")
+            prior_fallback = any(row["fallback"] and 0 < row["fallback_ns"] < early for row in records)
+            require(not prior_fallback, "Advisor entered FDIR before the scheduled crash")
+            valid_crash = in_window and from_first_advisor and not prior_fallback
             exits = [event["ns"] for event in link if event["event"] == "EXIT_OBSERVED" and
                      event["pid"] == injection["pid"] and event["ns"] >= early]
             if exits:
@@ -212,6 +219,7 @@ def assess(directory):
             print(f"fault_onset_latest_ns={late_effect}")
 
         fallback = next((row for row in records if row["fallback"] and row["fallback_ns"] >= early), None)
+        held_fdir = False
         if fallback is None:
             failures.append("No FDIR transition after the injection")
         else:
@@ -229,34 +237,57 @@ def assess(directory):
                       f"last_advisor_sample_ns={last_sample} last_sample_expiry_ns={last_sample + freshness} "
                       f"fallback_transition_ns={fallback['fallback_ns']} fdir_commit_ns={commit['finish_ns']}")
                 if group == "q2":
-                    require(all(row["fdir"] for row in records if row["cycle_id"] >= commit["cycle_id"]),
-                            "Q2 stopped using FDIR after takeover")
+                    held_fdir = all(row["fdir"] for row in records if row["cycle_id"] >= commit["cycle_id"])
+                    require(held_fdir, "Q2 stopped using FDIR after takeover")
             else:
                 failures.append("FDIR transition has no committed output")
 
         new_sessions = [entry for sess, entry in sessions.items() if sess != original_session and entry["ns"] >= early]
         after = [row for row in rejoined if row["gate_ns"] >= early]
+        observe_recovery = recovery is not None and valid_crash
+        if observe_recovery:
+            rejected = any(row["gate"] == "R2_SESSION" and row["checked_session"] == original_session and
+                           early <= row["gate_ns"] <= end for row in records)
+            if rejected or not releases:
+                recovery["rejected_old_session"] = rejected
+
         if group == "q2":
-            require(len(starts) == 1 and not after and not new_sessions, "Q2 started or accepted a replacement")
+            no_replacement = len(starts) == 1 and not after and not new_sessions
+            require(no_replacement, "Q2 started or accepted a replacement")
             print("rejoin=not-observed")
+            if observe_recovery:
+                replacement_rejoined = any(late_effect <= row["gate_ns"] <= end and
+                                           row["gate_ns"] in fresh_rejoins and
+                                           row["advisor_session"] != original_session for row in after)
+                if replacement_rejoined or (not after and not releases):
+                    recovery["rejoined"] = replacement_rejoined
+                if not releases:
+                    recovery["held_fdir"] = bool(no_replacement and held_fdir)
         elif not after:
             failures.append("Expected a new session and a fresh result")
+            if observe_recovery and not releases:
+                recovery["rejoined"] = False
         else:
             joined = after[0]
             new_session = joined["advisor_session"]
             replacement = sessions.get(new_session)
-            require(new_session != original_session and replacement in new_sessions,
-                    "Rejoin reused the revoked session")
+            new_identity = new_session != original_session and replacement in new_sessions
+            require(new_identity, "Rejoin reused the revoked session")
             if replacement:
                 pid = replacement["pid"]
                 restart_ns = starts.get(pid, 0)
-                require((pid != injection["pid"]) == (group == "q1"),
-                        "Unexpected advisor PID change or reuse")
-                require(0 < restart_ns <= replacement["ns"] <= joined["gate_ns"],
-                        "Advisor start, session, and first valid result are out of order")
+                pid_changed_as_expected = (pid != injection["pid"]) == (group == "q1")
+                restart_ordered = 0 < restart_ns <= replacement["ns"] <= joined["gate_ns"]
+                require(pid_changed_as_expected, "Unexpected advisor PID change or reuse")
+                require(restart_ordered, "Advisor start, session, and first valid result are out of order")
                 print(f"advisor_pid_after={pid} advisor_start_ns={restart_ns} "
                       f"new_session={new_session} session_ns={replacement['ns']} "
                       f"first_valid_result_ns={joined['gate_ns']}")
+                if (observe_recovery and new_identity and pid_changed_as_expected and restart_ordered and
+                        late_effect <= joined["gate_ns"] <= end and joined["gate_ns"] in fresh_rejoins):
+                    recovery["rejoined"] = True
+                    recovery["rejoin_result"] = (new_session, joined["gate_ns"])
+
             check_interval("rejoin", early, late_effect, joined["gate_ns"],
                            int(config[f"{group}_rejoin_limit_ns"]))
             if group == "q1":
