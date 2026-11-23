@@ -1,5 +1,9 @@
 # F Prime on QNX
 
+[![Host checks](https://github.com/D1349375/fprime-qnx/actions/workflows/host-checks.yml/badge.svg)](https://github.com/D1349375/fprime-qnx/actions/workflows/host-checks.yml)
+
+Host checks only. QNX build and run evidence is reproduced locally with the SDK.
+
 This project ports NASA/JPL F Prime to QNX 8.0 for the QNX Global Hackathon **Open-Source Contribution & Ports** category. The port provides a reusable platform library. Upstream Ref demonstrates adoption, and a separate simulated ADCS reference deployment exercises two-process communication, timing, and advisor recovery. A deterministic advisor exercises the recovery gate and fault handling. See the implementation log for validation status.
 
 ## Bring-up status
@@ -53,7 +57,7 @@ binaries. The harness prints its evidence directory and writes the per-round ver
 to recompute a single round from its config, flight and IPC CSVs, and advisor log. Q1 and Q2 additionally capture
 QNX process-manager death notifications in `death.csv`. The observer timestamps pulse reception independently of the
 flight and IPC workers. That timestamp bounds the exit time from above. See
-[M3 decisions](docs/決策與變更紀錄.md#d21--m3-飛行提交與故障驗收) for the pilot contract.
+[M3 decisions](docs/決策與變更紀錄.md#d21--m3-飛行提交與故障驗收2026-11-20) for the pilot contract.
 
 E6 builds the same C++17 mlpack 4.7 FFN on Linux and QNX x86-64. On Ubuntu 24.04, install the Armadillo,
 OpenBLAS, cereal and ensmallen development packages. Use the upstream mlpack 4.7.0 headers. Set
@@ -185,7 +189,8 @@ Open `fault-report.md` in the printed evidence directory. It links to each round
 configuration, original checker output, raw guest timeline, available trace, SDK
 packages and source and model revisions. The command returns a nonzero status if
 a verdict fails, a pair's XML differs outside the repair field, or a requested trace
-is incomplete. Keep evidence local according to §9.4 of the [project plan](docs/專案規劃書.md).
+is incomplete. Store measured timing, deadline counts, paired results and traces in local
+evidence. The [project plan](docs/專案規劃書.md#94-授權與公開材料必做) defines the scope of public material.
 
 To generate an application-behavior summary from a recorded paired run, use
 
