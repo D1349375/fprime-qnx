@@ -77,6 +77,7 @@ bool QnxMsgDriver::receive(std::uint8_t* payload, std::size_t capacity, std::siz
     size = info.msglen - sizeof(type);
     std::memcpy(payload, message.data() + sizeof(type), size);
     m_pending = rcvid;
+    m_senderPid = info.pid;
     return true;
 }
 

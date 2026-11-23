@@ -24,6 +24,7 @@ class Transport {
     bool receive(HubFrame& frame);
     bool send(const HubFrame& frame);
     bool exchange(const HubFrame& request, HubFrame& response);
+    pid_t pendingSenderPid() const { return m_qnx.pendingSenderPid(); }
     bool waitForPendingUnblock();
     void reject();
 
