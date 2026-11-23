@@ -82,7 +82,8 @@ void QnxTimer ::startTimerAt(const Fw::TimeInterval& interval, const struct time
 
 void QnxTimer ::runTimer(const Fw::TimeInterval& interval, const struct timespec* firstRelease) {
     // Private channel: only this process can attach to it
-    this->m_chid = ChannelCreate(_NTO_CHF_PRIVATE);
+    const unsigned channelFlags = _NTO_CHF_PRIVATE | (this->m_fixedPriority ? _NTO_CHF_FIXED_PRIORITY : 0);
+    this->m_chid = ChannelCreate(channelFlags);
     if (this->m_chid == -1) {
         Fw::Logger::log("QnxTimer ChannelCreate error: %s\n", strerror(errno));
         return;

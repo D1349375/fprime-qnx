@@ -4,6 +4,7 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include "Components/FlightCycle/Recovery.hpp"
 #include "Components/Link/Transport.hpp"
 
@@ -19,6 +20,8 @@ struct Options {
     std::uint64_t replaySeed = 0;
     const char* model = nullptr;
     const char* crashMarker = nullptr;
+    std::string gdsHost;
+    std::uint16_t gdsPort = 0;
 };
 
 inline bool readUnsigned(const char* text, std::uint64_t& value) {
@@ -57,6 +60,14 @@ inline bool parseOptions(int argc, char** argv, bool flight, Options& options) {
         } else if (std::strcmp(key, "--transport") == 0 && std::strcmp(value, "qnx") == 0) {
             options.transport = TransportKind::Qnx;
         } else if (std::strcmp(key, "--m3") == 0 && readScenario(value, options.scenario)) {
+        } else if (flight && std::strcmp(key, "--gds") == 0) {
+            const auto* separator = std::strchr(value, ':');
+            if (separator == nullptr || separator == value ||
+                !readUnsigned(separator + 1, number) || number == 0 || number > 65535) {
+                return false;
+            }
+            options.gdsHost.assign(value, static_cast<std::size_t>(separator - value));
+            options.gdsPort = static_cast<std::uint16_t>(number);
         } else if (flight && std::strcmp(key, "--m4-seed") == 0 && readUnsigned(value, number) && number != 0) {
             options.replaySeed = number;
         } else if (!flight && std::strcmp(key, "--model") == 0 && *value != '\0') {
