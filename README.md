@@ -161,8 +161,9 @@ This fixture adds a ramp to channel 0 with a slope fixed by each seed, starting
 at the same injection cycle as the fixed-bias case. The FFN and the conventional
 leave-one-out residual both use that channel hypothesis and causal sensor
 snapshots. The cutoffs are fixed above the maximum scores on healthy calibration
-seeds, with a zero observed false-alert limit. The runner evaluates independent
-healthy and drift cases and alternates the FDIR-only and learned-advisor order.
+seeds, with a zero observed false-alert limit. Fit seeds are 1101–1116, healthy calibration seeds are 2101–2116, and held-out
+seeds are 3101–3104. The runner alternates the FDIR-only and learned-advisor
+order for the held-out healthy and drift cases.
 
 An early warning can precede the independent confirmation for an exclusion
 proposal. Both paths use the existing RecoveryGate for action, geometry and
@@ -202,8 +203,8 @@ The ring is exported after each scenario. Use the SDP's `traceprinter` with
 
 To retain both scheduler traces when a deadline may have been missed, run
 `sudo scripts/m4-tracefs.sh "$(id -un)"` in a second Linux terminal and keep it open
-for the run. The helper prints a dedicated tracefs path. Pass that path to any ADCS
-mode, for example
+for the run. The helper prints a dedicated tracefs path. Pass it to adcs-pilot,
+adcs or adcs-pair, for example
 
 ~~~bash
 M4_HOST_TRACEFS=/run/fprime-adcs-trace.REPLACE_ME M4_KERNEL_TRACE=on-miss \
