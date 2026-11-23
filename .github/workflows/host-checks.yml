@@ -1,0 +1,60 @@
+name: Host checks
+
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: host-checks-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  policy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          submodules: false
+      - name: Check public documents and tracked files
+        run: scripts/check-public-docs.sh
+
+  static:
+    needs: policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          submodules: false
+      - name: Check shell scripts
+        run: git ls-files -z -- '*.sh' | xargs -0 -r shellcheck --severity=error
+      - name: Check Python syntax
+        run: |
+          export PYTHONPYCACHEPREFIX="$RUNNER_TEMP/python-cache"
+          git ls-files -z -- 'FprimeQnxReference/test/*.py' | xargs -0 -r python3 -m py_compile
+      - name: Test RecoveryGate on the host
+        run: |
+          c++ -std=c++14 -Wall -Wextra -Werror -pedantic -IFprimeQnxReference \
+            FprimeQnxReference/test/int/recovery-policy.cpp FprimeQnxReference/Components/Link/Protocol.cpp \
+            -o "$RUNNER_TEMP/recovery-policy"
+          "$RUNNER_TEMP/recovery-policy"
+      - name: Test the public ADCS report
+        run: |
+          if [[ -f FprimeQnxReference/test/m4/test_fault_report.py ]]; then
+            python3 -B -m unittest discover -s FprimeQnxReference/test/m4 -p test_fault_report.py
+          else
+            echo "::notice::Public ADCS report tests are pending the report's integration."
+          fi
+      - name: Check repository Markdown links
+        run: python3 -B scripts/check-markdown-links.py
