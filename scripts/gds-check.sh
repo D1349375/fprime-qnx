@@ -229,7 +229,7 @@ flight_pid=$(ssh "${ssh_opts[@]}" "root@$guest" \
 ssh "${ssh_opts[@]}" "root@$guest" "pidin -P '$flight_pid' -F '%a %b %N %p'" \
     | awk -v pid="$flight_pid" '$1 == pid' >"$run/target-threads.txt"
 for priority in 60f 44r 43r 42r 41r; do
-    grep -Eq "[[:space:]]$priority[[:space:]]*$" "$run/target-threads.txt" ||
+    grep -Eq "[[:space:]]${priority}[[:space:]]*$" "$run/target-threads.txt" ||
         fail "missing expected ground-enabled scheduling policy ($priority)"
 done
 
