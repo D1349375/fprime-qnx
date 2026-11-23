@@ -187,6 +187,12 @@ packages and source and model revisions. The command returns a nonzero status if
 a verdict fails, a pair's XML differs outside the repair field, or a requested trace
 is incomplete. Keep evidence local according to §9.4 of the [project plan](docs/專案規劃書.md).
 
+To generate an application-behavior summary from a recorded paired run, use
+
+~~~bash
+python3 -B FprimeQnxReference/test/m4/fault-report.py --public RUN_DIR
+~~~
+
 ## Project documents
 
 | Document | Contents |

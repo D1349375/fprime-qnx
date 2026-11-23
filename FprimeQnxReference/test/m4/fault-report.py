@@ -2,8 +2,11 @@
 """Summarize the existing M3 and M4 verdicts and raw timing for the paired ADCS run."""
 
 import argparse
+from contextlib import redirect_stdout
 import csv
+import io
 import json
+import re
 import runpy
 from pathlib import Path
 
@@ -208,10 +211,113 @@ def report(run):
             print(f"  - Flight timing evidence incomplete. See [{run_id}/timing.txt]({run_id}/timing.txt).")
 
 
+def public_case(run, run_id, arm, seed, outcome):
+    if (not isinstance(run_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]+", run_id) or
+            outcome.get("group") != arm or outcome.get("seed") != seed or outcome.get("target_exit") != "0"):
+        return {}
+    directory = run / run_id
+    if directory.resolve().parent != run:
+        return {}
+
+    recovery = {}
+    try:
+        config = fields(read_text(directory / "config.txt"))
+        repair = "restart" if arm == "q1" else "none"
+        if (config.get("group") != arm or config.get("seed") != seed or config.get("repair") != repair or
+                config.get("scenario") != "crash" or config.get("advisor") != "learned"):
+            return {}
+        # Recompute behavior while keeping the checker's diagnostics out of the summary.
+        with redirect_stdout(io.StringIO()):
+            m3["assess"](directory, recovery)
+    except m3["Incomplete"]:
+        pass
+    except (OSError, KeyError, ValueError, IndexError):
+        return {}
+
+    if arm == "q1":
+        if recovery.get("rejoined") is False:
+            recovery["replay_verified"] = False
+        if recovery.get("rejoined") and outcome.get("adcs_exit") == "0":
+            try:
+                replay = json.loads(read_text(directory / "adcs.json"))
+                if replay.get("group") == arm and str(replay.get("seed")) == seed:
+                    session, gate = recovery["rejoin_result"]
+                    recovery["replay_verified"] = any(
+                        str(adoption["session"]) == str(session) and adoption["gate_ns"] == gate
+                        for adoption in replay["verified_rejoins"]
+                    )
+            except (OSError, AttributeError, TypeError, ValueError, KeyError):
+                pass
+    return recovery
+
+
+def public_report(run, with_q2=False):
+    run = run.resolve()
+    pairs = tsv(run / "pairs.tsv")
+    try:
+        results = tsv(run / "results.tsv")
+    except FileNotFoundError:
+        results = []
+    outcomes = {row["run_id"]: row for row in results}
+    if (len(outcomes) != len(results) or len({pair["pair"] for pair in pairs}) != len(pairs) or
+            any(len({pair[arm] for pair in pairs}) != len(pairs) for arm in ("q1", "q2"))):
+        raise ValueError("Duplicate case or pair in the evidence manifest")
+
+    restart, disabled = [], []
+    verified = 0
+    for pair in pairs:
+        config_ok = pair["slm_config"] == "PASS"
+        verified += config_ok
+        arms = ("q1", "q2") if with_q2 else ("q1",)
+        for arm, records in zip(arms, (restart, disabled)):
+            run_id = pair[arm]
+            record = public_case(run, run_id, arm, pair["seed"], outcomes.get(run_id, {})) if config_ok else {}
+            records.append(record)
+
+    total = len(pairs)
+    print("# ADCS advisor recovery\n")
+    print(f"- The SLM settings check passed in {verified} of {total} recorded pairs.")
+    fields_and_labels = (
+        ("rejoined", "The restarted advisor rejoined with a new session"),
+        ("replay_verified", "An adopted result from the new session matched the held-out replay"),
+        ("rejected_old_session", "FlightSW rejected advice from the revoked session"),
+    )
+    for field, label in fields_and_labels:
+        count = sum(record.get(field) is True for record in restart)
+        print(f"- {label} in {count} of {total} recorded pairs.")
+    incomplete = sum(any(record.get(field) is None for field, _ in fields_and_labels) for record in restart)
+    print(f"- Behavior evidence was missing or inconclusive in {incomplete} of {total} restart trials.")
+
+    if with_q2:
+        held = sum(record.get("held_fdir") is True for record in disabled)
+        rejoined = sum(record.get("rejoined") is True for record in disabled)
+        incomplete = sum(any(record.get(field) is None for field in ("held_fdir", "rejoined")) for record in disabled)
+        paired = sum(
+            all(enabled.get(field) is True for field, _ in fields_and_labels) and control.get("held_fdir") is True
+            for enabled, control in zip(restart, disabled)
+        )
+        print(f"- With repair disabled, FDIR held through the observation window in {held} of {total} recorded pairs.")
+        print(f"- With repair disabled, advisor rejoin was observed in {rejoined} of {total} recorded pairs.")
+        print(f"- Behavior evidence was missing or inconclusive in {incomplete} of {total} trials with repair disabled.")
+        print(f"- Both the restart behavior and sustained FDIR with repair disabled were verified in {paired} "
+              f"of {total} recorded pairs.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=Path)
-    report(parser.parse_args().directory)
+    parser.add_argument("--public", action="store_true", help="print the application-behavior summary")
+    parser.add_argument("--with-q2", action="store_true", help="include the repair-disabled comparison in public mode")
+    args = parser.parse_args()
+    if args.with_q2 and not args.public:
+        parser.error("--with-q2 requires --public")
+    if args.public:
+        try:
+            public_report(args.directory, args.with_q2)
+        except (OSError, KeyError, ValueError):
+            parser.exit(1, "Cannot read the paired evidence manifest.\n")
+    else:
+        report(args.directory)
 
 
 if __name__ == "__main__":
