@@ -5,11 +5,11 @@ F Prime on QNX is a standalone port repository with `nasa/fprime` as a Git submo
 
 ## Contribution status
 
-| Work | Status as of 2026-11-23 |
+| Work | Status as of 2026-11-25 |
 | --- | --- |
-| U0 platform-library and reference deployment discussion | Draft prepared for project maintainer review and posting. Public URL pending. |
-| U4 POSIX UART portability issue | Draft and standalone header reproducer verified for project maintainer review and posting. Public URL pending. |
-| Upstream pull request | None submitted for this port. Project-repository reviews track the port itself. |
+| U0 platform-library and reference deployment discussion | Posted on 2026-11-24 as [discussion #6436](https://github.com/nasa/fprime/discussions/6436) in the General category. No replies yet. |
+| U4 POSIX UART portability issue | Posted on 2026-11-24 as [issue #6437](https://github.com/nasa/fprime/issues/6437) with the standalone header reproducer. Maintainers added the `bug` and `Platforms` labels. No replies yet. |
+| Upstream pull request | None submitted for this port. A pull request for U4 waits for the maintainers to accept the issue, following the upstream contribution process. Project-repository reviews track the port itself. |
 
 The upstream guide describes supported platforms, community reference projects, and CI requirements. The pinned contribution process asks for an issue and Change Control Board (CCB) approval before implementing a corresponding pull request. The U0 discussion asks about the community add-on layout and external CI. [Supported platforms](https://fprime.jpl.nasa.gov/latest/docs/user-manual/framework/supported-platforms/) · [Contribution process](https://github.com/nasa/fprime/blob/633c89d5b7f67a547160712a38efa58047566512/CONTRIBUTING.md#code-contribution-process) · [External CI interface](https://github.com/nasa/fprime/blob/633c89d5b7f67a547160712a38efa58047566512/.github/actions/ext-ci/README.md)
 

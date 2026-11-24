@@ -16,7 +16,7 @@ and the return of a separate onboard machine learning advisor.
 | --- | --- |
 | Category | Open-Source Contribution & Ports. [QNX Global Hackathon rules](https://qnx.devpost.com/rules) |
 | Upstream | Standalone port with [`nasa/fprime` v4.4.2](https://github.com/nasa/fprime/tree/f22ce8f2f2943e641d454e9daa7f129e6c878d32) as a submodule at `f22ce8f2f2943e641d454e9daa7f129e6c878d32`. |
-| Upstream contribution | Platform discussion and UART issue drafted. Posting and public URLs are pending. [Status](docs/en/upstream.md) |
+| Upstream contribution | Posted to `nasa/fprime` on 2026-11-24: [platform discussion #6436](https://github.com/nasa/fprime/discussions/6436) and [POSIX UART issue #6437](https://github.com/nasa/fprime/issues/6437). No upstream pull request yet. [Status](docs/en/upstream.md) |
 | QNX target | QNX SDP 8.0.6 and QNX 8.0.0 x86-64 on QEMU/KVM under Ubuntu 24.04 and WSL2. [Coverage](docs/en/evidence-index.md#target-and-host-coverage) |
 | Frozen target source | [`029fadceb532034c91905a6e10007f61ccc9f8d7`](https://github.com/D1349375/fprime-qnx/commit/029fadceb532034c91905a6e10007f61ccc9f8d7). [Evidence index](docs/en/evidence-index.md) |
 | Toolchain | `qcc` GCC 12.2.0, CMake and `fprime-util`. [Host setup](docs/en/host-setup.md) |
