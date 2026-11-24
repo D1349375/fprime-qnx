@@ -316,7 +316,19 @@ run_scenario() {
     timeout -k 5s 28s "${command[@]}" >"$round/target.log" 2>&1 || rc=$?
     printf '%s\n' "$rc" >"$round/target-status.txt"
     for name in "${files[@]}"; do transfers+=("$target:$remote/$name"); done
-    timeout -k 2s 10s scp -q "${ssh_opts[@]}" "${transfers[@]}" "$round/" 2>>"$round/target.log" || true
+    local capture=0 wait_limit
+    if "$drift"; then
+        # Collect the raw files before the next scenario can overwrite them.
+        printf 'timeout\texit\n' >"$round/capture-status.tsv"
+        for wait_limit in 15s 25s; do
+            capture=0
+            timeout -k 2s "$wait_limit" scp -q "${ssh_opts[@]}" "${transfers[@]}" "$round/" 2>>"$round/target.log" || capture=$?
+            printf '%s\t%s\n' "$wait_limit" "$capture" >>"$round/capture-status.tsv"
+            if (( capture == 0 )); then break; fi
+        done
+    else
+        timeout -k 2s 10s scp -q "${ssh_opts[@]}" "${transfers[@]}" "$round/" 2>>"$round/target.log" || true
+    fi
     if [[ "$kernel_trace" != 0 ]]; then
         capture_files=("${trace_files[@]}")
         if [[ "$kernel_trace" == on-miss ]]; then
@@ -340,7 +352,7 @@ run_scenario() {
     local assessor=assess-adcs.py
     if "$drift"; then assessor=assess-drift.py; fi
     "$python" "$fixture/$assessor" "$training" "$round" >"$round/adcs.json" 2>"$round/adcs.err" || assessment=$?
-    if (( timing == 2 )) || { "$drift" && (( timing == 0 && assessment == 2 )); }; then
+    if (( timing == 2 )) || { "$drift" && (( timing == 0 && (assessment == 2 || capture != 0) )); }; then
         verdict=INDETERMINATE
     elif (( rc || timing || assessment )); then
         verdict=FAIL

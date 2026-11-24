@@ -206,17 +206,21 @@ def paired_report(root):
             arms = {}
             for mode in ("fdir", "learned"):
                 run_id = f"{seed}-{mode}-{label}"
-                arms[mode] = {**read_case(root / "replay", root / run_id),
-                              "original_verdict": statuses.get(run_id), "case_dir": run_id}
+                arm = read_case(root / "replay", root / run_id)
+                if "error" not in arm and (arm["seed"], arm["scenario"], arm["arm"]) != (seed, scenario, mode):
+                    arm.update(case_pass=False, evidence_complete=False, error="Case configuration differs from pair")
+                arms[mode] = {**arm, "original_verdict": statuses.get(run_id), "case_dir": run_id}
             comparable = all(arm["evidence_complete"] for arm in arms.values())
-            deltas = {}
+            observed = {}
             for name in ("offline_first_alert_cycle", "first_alert_snapshot_cycle", "first_alert_flight_cycle",
                          "first_exclusion_cycle", "peak_valid_angle_deg", "degraded_submitted_cycles",
                          "stable_start_cycle", "stable_confirmed_cycle"):
-                learned, fdir = (arms[mode].get(name) for mode in ("learned", "fdir"))
-                deltas[name] = learned - fdir if comparable and learned is not None and fdir is not None else None
+                learned, fdir = (None if "error" in arm else arm.get(name) for arm in (arms["learned"], arms["fdir"]))
+                observed[name] = learned - fdir if learned is not None and fdir is not None else None
+            deltas = {name: difference if comparable or name == "offline_first_alert_cycle" else None
+                      for name, difference in observed.items()}
             pairs.append({"seed": seed, "scenario": scenario, "complete_pair": comparable,
-                          "learned_minus_fdir": deltas, **arms})
+                          "learned_minus_fdir": deltas, "observed_learned_minus_fdir": observed, **arms})
     return pairs
 
 
@@ -231,7 +235,7 @@ def main():
             parser.error("--pairs takes the run directory only")
         pairs = paired_report(args.replay_or_run)
         print(json.dumps(pairs, indent=2))
-        return int(any(not arm["case_pass"] or arm["original_verdict"] is None
+        return int(any(not arm["case_pass"] or (arm["original_verdict"] or {}).get("verdict") != "PASS"
                        for pair in pairs for arm in (pair["learned"], pair["fdir"])))
     if args.case is None:
         parser.error("provide the replay and case directories")
