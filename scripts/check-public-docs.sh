@@ -4,6 +4,13 @@ set -euo pipefail
 root="$(git -C "$(dirname -- "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)"
 cd -- "$root"
 
+# On Windows, python3 can resolve to an App Execution Alias stub that exits without running the check.
+if ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 3)' >/dev/null 2>&1; then
+    echo 'check-public-docs.sh: python3 is missing or is not a working Python 3.9+ interpreter.' >&2
+    echo 'On Windows, put a python3 wrapper that runs "py -3" first on PATH, or run the check in WSL.' >&2
+    exit 2
+fi
+
 python3 -B - <<'PY'
 import hashlib
 import os

@@ -68,6 +68,11 @@ if [[ ! -r "$sysroot/usr/include/mlpack.hpp" || ! -r "$sysroot/.e6-apks/SHA256SU
     exit 2
 fi
 
+if ! pkg-config --exists armadillo openblas; then
+    echo 'pkg-config cannot find the host Armadillo and OpenBLAS packages used for the Linux replay.' >&2
+    echo 'Install them, or set PKG_CONFIG_PATH (and LD_LIBRARY_PATH) to an isolated host package root.' >&2
+    exit 2
+fi
 host_includes=()
 if [[ -n "${E6_HOST_MLPACK_INCLUDE:-}" ]]; then
     host_includes=(-I "$E6_HOST_MLPACK_INCLUDE")
