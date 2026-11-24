@@ -174,7 +174,7 @@ Check the guest address with `ifconfig`. Once a reference deployment and GDS exi
 
 For the ML work, use a dedicated x86-64 **QNX** APK sysroot under the Ubuntu home directory. Follow QNX's cross-compile codelab to install the host APK tools, configure trusted keys and matching package repositories, and verify the sysroot with its C example. Choose package repositories compatible with the installed SDK and guest. Record the mlpack, Armadillo, ensmallen, cereal, and OpenBLAS versions before adding the ML dependency. Keep the SDK's normal `QNX_TARGET` for the SDK-only smoke test.
 
-[QNX APK sysroot codelab](https://qnx.github.io/codelabs/apk-based-cross-compile/index.html) · [AI design notes](zh/AI深化方向.md)
+[QNX APK sysroot codelab](https://qnx.github.io/codelabs/apk-based-cross-compile/index.html)
 
 ## E7. Prepare F Prime · 安裝工具並接續 Hello World
 
