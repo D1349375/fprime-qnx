@@ -31,6 +31,15 @@ qnx_vm_start() {
             return 1
         fi
     fi
+    # The guest uses the libvirt default bridge for DHCP. Without an active network it boots but never
+    # gets an address, which otherwise surfaces later as an SSH readiness timeout.
+    if command -v virsh >/dev/null 2>&1 && ! timeout 10 virsh -c qemu:///system net-list --name 2>/dev/null |
+            grep -qx default; then
+        printf 'The libvirt default network is not active, so the guest would get no DHCP address.\n' >&2
+        printf 'Start it with: virsh -c qemu:///system net-start default (a stale virbr0 left by a WSL\n' >&2
+        printf 'distribution restart must be deleted first: ip link delete virbr0, as root).\n' >&2
+        return 1
+    fi
     local deadline launch_status
     # The detached launcher can return before QEMU writes its PID file.
     if (cd "$image_dir" && setsid --wait mkqnximage --run=-h) >"$boot_log" 2>&1 < /dev/null; then

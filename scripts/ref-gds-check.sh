@@ -48,7 +48,8 @@ cleanup() {
             > "${RUN_DIR}/target-console.log" 2>/dev/null
     fi
     if [ -n "${GDS_PID}" ]; then
-        kill "${GDS_PID}" >/dev/null 2>&1
+        # fprime-gds starts helper processes; stop its whole session so none keeps the port or ZMQ endpoints.
+        kill -TERM -- "-${GDS_PID}" >/dev/null 2>&1 || kill "${GDS_PID}" >/dev/null 2>&1
         wait "${GDS_PID}" 2>/dev/null
     fi
 }
@@ -72,8 +73,15 @@ log "guest ${GUEST}, host bridge ${HOST_IP}"
 ssh "${SSH_OPTS[@]}" "root@${GUEST}" 'uname -a' | tee "${RUN_DIR}/target-uname.txt"
 
 # 2. GDS (TCP server, no GUI)
+if ss -H -ltn "sport = :${PORT}" | grep -q .; then
+    fail "TCP port ${PORT} is already in use (see: ss -ltnp 'sport = :${PORT}'); stop the old GDS or set GDS_PORT"
+fi
+if pgrep -f 'fprime_gds|fprime-gds' >/dev/null; then
+    log "warning: other F Prime GDS processes are running and may hold the default ZMQ endpoints:"
+    pgrep -af 'fprime_gds|fprime-gds' | cut -c1-160
+fi
 log "starting fprime-gds on 0.0.0.0:${PORT}"
-fprime-gds -n -g none --dictionary "${DICT}" --framing-selection space-packet-space-data-link \
+setsid --wait fprime-gds -n -g none --dictionary "${DICT}" --framing-selection space-packet-space-data-link \
     --ip-address 0.0.0.0 --ip-port "${PORT}" -l "${RUN_DIR}/gds" --log-directly \
     > "${RUN_DIR}/gds-stdout.log" 2>&1 < /dev/null &
 GDS_PID=$!
