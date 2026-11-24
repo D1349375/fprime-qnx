@@ -57,7 +57,7 @@ channels. `cmdSeq` (`Svc.CmdSequencer`) remains.
 ## 5. OSAL test portability on the QNX x86-64 guest
 
 The V1 run used the pinned upstream OSAL test sources and recorded the original verdicts. See the
-[implementation log](實作迭代紀錄.md) for the case counts, environment, and probes.
+[implementation log](zh/實作迭代紀錄.md) for the case counts, environment, and probes.
 
 - `PosixTaskScheduling.DefaultModeNiceBandPriorityRemainsSchedRr` expects a request for priority 120 to clamp to the
   maximum. On QNX, the observed SCHED_RR range is 1–253 and the task retains 120. Compute the expected priority from the

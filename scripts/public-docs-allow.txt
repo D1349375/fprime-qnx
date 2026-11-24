@@ -1,23 +1,21 @@
 # Each fragment must contain the specific timing text it permits.
 # The existing D55 clock-precision diagnostic is pinned by its full-line hash.
-README.md:against the 20 ms period
-README.md:computes the 20 ms verdict
-docs/AI深化方向.md:飛行軟體 jitter 的變化
-docs/Ports候選專案.md:量測控制週期、jitter、CPU 滿載下會不會錯過截止時間
-docs/Ports候選專案.md:跟 Linux 比較 jitter(
-docs/QNX8.0與開發限制.md:例如量測到的延遲、jitter、故障復原
-docs/實作迭代紀錄.md:sha256:5be72e5524a4b37d30a5b4645b6e6d5ca81233181ec28268d89a4e53cf5107d3
-docs/專案規劃書.md:100 ms 是 timeout 設定值
-docs/專案規劃書.md:Record inference latency p50 and p99 locally.
-docs/專案規劃書.md:T = D = 20 ms
-docs/專案規劃書.md:250 ms 結果有效期
-docs/專案規劃書.md:Recompute p50, p99, the maximum and minimum deadline margin
-docs/專案規劃書.md:missed cycles, p99, worst latency and minimum deadline margin in local evidence
-docs/歷屆得獎作品調研.md:render thread 每 5.33 ms 依絕對時鐘喚醒
-docs/決策與變更紀錄.md:20 ms 的絕對單調時鐘時基
-docs/決策與變更紀錄.md:回覆以原始快照時刻限制在 250 ms 內
-docs/決策與變更紀錄.md:100 ms 核心 timeout
-docs/決策與變更紀錄.md:截止時間各 20 ms、TTL 250 ms
-docs/決策與變更紀錄.md:300 ms 回退上限
-docs/決策與變更紀錄.md:40 ms 顧問輪詢
-docs/競賽規劃缺口與驗收方案.md:T = D = 20 ms
+docs/zh/AI深化方向.md:飛行軟體 jitter 的變化
+docs/zh/Ports候選專案.md:量測控制週期、jitter、CPU 滿載下會不會錯過截止時間
+docs/zh/Ports候選專案.md:跟 Linux 比較 jitter(
+docs/zh/QNX8.0與開發限制.md:例如量測到的延遲、jitter、故障復原
+docs/zh/實作迭代紀錄.md:sha256:5be72e5524a4b37d30a5b4645b6e6d5ca81233181ec28268d89a4e53cf5107d3
+docs/zh/專案規劃書.md:100 ms 是 timeout 設定值
+docs/zh/專案規劃書.md:Record inference latency p50 and p99 locally.
+docs/zh/專案規劃書.md:T = D = 20 ms
+docs/zh/專案規劃書.md:250 ms 結果有效期
+docs/zh/專案規劃書.md:Recompute p50, p99, the maximum and minimum deadline margin
+docs/zh/專案規劃書.md:missed cycles, p99, worst latency and minimum deadline margin in local evidence
+docs/zh/歷屆得獎作品調研.md:render thread 每 5.33 ms 依絕對時鐘喚醒
+docs/zh/決策與變更紀錄.md:20 ms 的絕對單調時鐘時基
+docs/zh/決策與變更紀錄.md:回覆以原始快照時刻限制在 250 ms 內
+docs/zh/決策與變更紀錄.md:100 ms 核心 timeout
+docs/zh/決策與變更紀錄.md:截止時間各 20 ms、TTL 250 ms
+docs/zh/決策與變更紀錄.md:300 ms 回退上限
+docs/zh/決策與變更紀錄.md:40 ms 顧問輪詢
+docs/zh/競賽規劃缺口與驗收方案.md:T = D = 20 ms
