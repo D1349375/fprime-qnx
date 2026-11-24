@@ -174,7 +174,7 @@ Check the guest address with `ifconfig`. Once a reference deployment and GDS exi
 
 For the ML work, use a dedicated x86-64 **QNX** APK sysroot under the Ubuntu home directory. Follow QNX's cross-compile codelab to install the host APK tools, configure trusted keys and matching package repositories, and verify the sysroot with its C example. Choose package repositories compatible with the installed SDK and guest. Record the mlpack, Armadillo, ensmallen, cereal, and OpenBLAS versions before adding the ML dependency. Keep the SDK's normal `QNX_TARGET` for the SDK-only smoke test.
 
-[QNX APK sysroot codelab](https://qnx.github.io/codelabs/apk-based-cross-compile/index.html) · [AI design notes](AI深化方向.md)
+[QNX APK sysroot codelab](https://qnx.github.io/codelabs/apk-based-cross-compile/index.html) · [AI design notes](zh/AI深化方向.md)
 
 ## E7. Prepare F Prime · 安裝工具並接續 Hello World
 
@@ -192,7 +192,7 @@ fprime-util --help
 
 The next implementation step is to add the F Prime QNX platform CMake file and x86-64 `qcc` toolchain file in this project, using the upstream porting guide. Once the files exist, cross-build a minimal F Prime Hello World deployment and run it in the guest. Capture the target and compiler shown by CMake, the deployment's startup or Hello World event, and the guest's `uname -a`. A native Ubuntu F Prime build can serve as a separate toolchain check.
 
-[F Prime installation](https://fprime.jpl.nasa.gov/latest/docs/getting-started/installing-fprime/) · [F Prime porting guide](https://fprime.jpl.nasa.gov/latest/docs/how-to/integrate/porting-guide/) · [Project plan](專案規劃書.md)
+[F Prime installation](https://fprime.jpl.nasa.gov/latest/docs/getting-started/installing-fprime/) · [F Prime porting guide](https://fprime.jpl.nasa.gov/latest/docs/how-to/integrate/porting-guide/) · [Project plan](zh/專案規劃書.md)
 
 ## W1 handoff record · 驗收紀錄
 
@@ -205,4 +205,4 @@ The next implementation step is to add the F Prime QNX platform CMake file and x
 | GDS and APK | Guest address and connectivity, sysroot and package versions when completed |
 | F Prime on QNX | Cross-build result and target startup output after the platform files are available |
 
-Append the test date and the confirmed results to the [W1 environment log](W1環境建置紀錄.md). Keep generated images, local SDK files, and license credentials on the development machine.
+Append the test date and the confirmed results to the [W1 environment log](zh/W1環境建置紀錄.md). Keep generated images, local SDK files, and license credentials on the development machine.
