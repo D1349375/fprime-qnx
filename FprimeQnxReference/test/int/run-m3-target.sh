@@ -37,6 +37,16 @@ if [ "$#" -ge 5 ]; then
     fi
 fi
 
+runtime_case=${M3_RUNTIME_CASE:-default}
+case "$runtime_case:$scenario:$repair" in
+    default:*) ;;
+    address-space:crash:restart) advisor_options="$advisor_options --address-space-mib 128" ;;
+    q3-unbudgeted:stall:restart|q3-sporadic:stall:restart)
+        advisor_options="$advisor_options --cpu-load ${runtime_case#q3-}"
+        flight_options="$flight_options --check-cpu0"
+        ;;
+    *) exit 2 ;;
+esac
 if [ "$scenario" = drift ] && [ "$#" -ne 6 ]; then exit 2; fi
 
 control="/dev/slm-fprime-m3-$suffix"
@@ -55,6 +65,14 @@ done
 sed -e "s|@DIR@|$target_dir|g" -e "s/@SCENARIO@/$scenario/g" -e "s/@REPAIR@/$repair/g" \
     -e "s|@FLIGHT_OPTIONS@|$flight_options|g" -e "s|@ADVISOR_OPTIONS@|$advisor_options|g" \
     m3-slm.xml.in > m3-slm.xml
+case "$runtime_case" in
+    q3-*)
+        sed '/<SLM:component name=/a\
+    <SLM:runmask>1</SLM:runmask>
+' m3-slm.xml > m3-shared-cpu.xml
+        mv m3-shared-cpu.xml m3-slm.xml
+        ;;
+esac
 ulimit -c 0 || true
 monitor=
 watcher=

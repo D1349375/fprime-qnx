@@ -10,6 +10,7 @@
 #include <functional>
 #include <pthread.h>
 #include <system_error>
+#include <sys/neutrino.h>
 #include <thread>
 #include <unistd.h>
 
@@ -17,6 +18,7 @@
 #include "Components/FlightGround/FlightGround.hpp"
 #include "Components/Link/Options.hpp"
 #include "Components/Link/Transport.hpp"
+#include "FlightDeployment/GateStatus.hpp"
 #include "FlightDeployment/Top/FlightTopologyAc.hpp"
 #include "Os/Os.hpp"
 #include "Svc/PassiveRateGroup/PassiveRateGroup.hpp"
@@ -40,6 +42,7 @@ void writeTiming(M2::Handoff& handoff,
                  FILE* file,
                  FILE* events,
                  M2::FlightGround* ground,
+                 M2::GateStatus* gateStatus,
                  bool drift) {
     const bool m3 = events != nullptr;
     const auto write = [file, m3, drift](const M2::CycleRecord& row) {
@@ -66,13 +69,16 @@ void writeTiming(M2::Handoff& handoff,
         }
         std::fputc('\n', file);
     };
-    const auto writeNext = [&handoff, &linkTrace, &write, events, ground]() {
+    const auto writeNext = [&handoff, &linkTrace, &write, events, ground, gateStatus]() {
         M2::CycleRecord row{};
         const bool hasCycle = handoff.records.pop(row);
         if (hasCycle) {
             write(row);
             if (ground != nullptr) {
                 ground->observe(row);
+            }
+            if (gateStatus != nullptr) {
+                gateStatus->observe(row);
             }
         }
         LinkEvent entry{};
@@ -335,18 +341,33 @@ int main(int argc, char** argv) {
     M2::Options options;
     if (!M2::parseOptions(argc, argv, true, options) ||
         (options.scenario == M2::Scenario::Transport && options.transport != M2::TransportKind::Qnx)) {
-        std::fprintf(stderr, "Usage: FlightSW [--transport udp|qnx] [--port N] [--cycles N] [--log PATH] [--m3 SCENARIO] [--link-log PATH] [--m4-seed N] [--drift-cutoff SCORE] [--gds HOST:PORT]\n");
+        std::fprintf(stderr, "Usage: FlightSW [--transport udp|qnx] [--port N] [--cycles N] [--log PATH] [--m3 SCENARIO] [--link-log PATH] [--m4-seed N] [--drift-cutoff SCORE] [--gds HOST:PORT] [--gate-status] [--check-cpu0]\n");
         return 2;
     }
 
+    if (options.checkCpu0) {
+        unsigned runmask = 0;
+        if (ThreadCtl(_NTO_TCTL_RUNMASK_GET_AND_SET, &runmask) != 0 || runmask != 1 || SchedGetCpuNum() != 0) {
+            std::fputs("Q3 requires FlightSW to be pinned to CPU 0\n", stderr);
+            return 1;
+        }
+        std::puts("Q3_FLIGHT cpu=0 runmask=1");
+    }
+
     const bool gds = options.gdsPort != 0;
-    if (gds && options.scenario == M2::Scenario::Legacy) {
-        std::fprintf(stderr, "FlightSW --gds requires --m3 SCENARIO\n");
+    if ((gds || options.gateStatus) && options.scenario == M2::Scenario::Legacy) {
+        std::fprintf(stderr, "FlightSW --gds and --gate-status require --m3 SCENARIO\n");
         return 2;
     }
     char groundAddress[INET_ADDRSTRLEN]{};
     if (gds && !resolveGroundAddress(options.gdsHost.c_str(), groundAddress)) {
         return 2;
+    }
+
+    M2::GateStatus gateStatus;
+    if (options.gateStatus && !gateStatus.start()) {
+        std::perror("FlightSW /dev/fprime/gate");
+        return 1;
     }
 
     M2::Transport transport;
@@ -452,7 +473,7 @@ int main(int argc, char** argv) {
                              std::cref(running), std::ref(counts), m3 ? &linkTrace : nullptr,
                              holdReply ? &pause : nullptr, monitor);
         logger = std::thread(writeTiming, std::ref(handoff), std::ref(linkTrace), std::cref(logging), file, events,
-                             gds ? &M2Flight::ground : nullptr, drift);
+                             gds ? &M2Flight::ground : nullptr, options.gateStatus ? &gateStatus : nullptr, drift);
         if (gds) {
             M2Flight::startTasks(topology);
             groundStarted = true;

@@ -1,0 +1,27 @@
+# ADCS reference guest policy. Existing system services retain their default type.
+type default;
+type fprime_flight_t;
+type fprime_advisor_t;
+type fprime_hub_t;
+type fprime_gate_t;
+type fprime_observer_t;
+
+allow_attach default /...;
+allow_link default /...;
+allow default self:ability {
+    settypeid:fprime_flight_t,fprime_advisor_t,fprime_observer_t
+};
+
+allow fprime_flight_t self:ability {
+    public_channel
+    pathspace
+};
+allow_attach fprime_flight_t /dev/name/local/fprime-m2 fprime_hub_t;
+allow_attach fprime_flight_t /dev/fprime/gate fprime_gate_t;
+allow default { fprime_hub_t fprime_gate_t }:channel connect;
+allow fprime_advisor_t fprime_hub_t:channel connect;
+
+allow fprime_observer_t self:ability {
+    nonroot
+    channel_connect:fprime_gate_t
+};

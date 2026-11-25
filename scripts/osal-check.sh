@@ -63,7 +63,7 @@ suites=(
     PosixFileTest PosixConsoleTest PosixTaskTest PosixMutexTest PosixFileSystemTest
     PosixDirectoryTest PosixConditionTests PosixCountingSemaphoreTest PosixRawTimeTest
     PriorityMemQueue_UnitTest PriorityQueueTest LocklessPriorityQueueTest
-    StubCpuTest StubMemoryTest
+    StubCpuTest StubMemoryTest QnxSystemResourcesTest
 )
 (
     cd "$ROOT"
@@ -177,6 +177,5 @@ for suite in "${suites[@]}"; do
         tee -a "$summary"
 done
 printf 'LocklessPriorityQueueTsanTest\tSKIP\t-\t-\t-\t-\n' | tee -a "$summary"
-printf 'Cpu native\tUNSUPPORTED\t-\t-\t-\t-\nMemory native\tUNSUPPORTED\t-\t-\t-\t-\n' | tee -a "$summary"
 printf 'Linux-only Task cases\tUNSUPPORTED\t-\t-\t-\t-\n' | tee -a "$summary"
 exit "$result"

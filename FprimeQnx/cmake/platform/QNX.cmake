@@ -20,7 +20,8 @@ register_fprime_config(
     CHOOSES_IMPLEMENTATIONS
         # QNX provides working POSIX unnamed semaphores (sem_init, sem_timedwait)
         Os_CountingSemaphore_Posix
-        # Os_Cpu and Os_Memory stay on the unix Stub selection until QNX implementations land in this library
+        Os_Cpu_Qnx
+        Os_Memory_Qnx
     GLOBAL_IMPLICIT_DEPENDENCY
 )
 target_compile_definitions(PlatformQnx INTERFACE -DTGT_OS_TYPE_QNX)

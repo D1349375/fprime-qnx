@@ -5,9 +5,13 @@
 #include <fcntl.h>
 #include <thread>
 #include <unistd.h>
+#include <limits>
+#include <sys/mman.h>
+#include <sys/resource.h>
 
 #include "Components/Link/Options.hpp"
 #include "Components/Link/Transport.hpp"
+#include "MlDeployment/SporadicExercise.hpp"
 #include "MlDeployment/Top/AdvisorTopologyAc.hpp"
 #include "Os/Os.hpp"
 
@@ -37,6 +41,44 @@ bool post(M2::Transport& transport, M2::HubLink& hub, const M2::Packet& result) 
     return transport.exchange(hub.wrap(result), frame) && hub.unwrap(frame, ack) &&
            ack.type == M2::MessageType::Ack && ack.client == result.client &&
            ack.session == result.session && ack.cycle == result.cycle && ack.flag;
+}
+
+constexpr std::uint64_t BYTES_PER_MIB = 1024 * 1024;
+
+bool capAddressSpace(std::uint64_t limitMiB, std::size_t& bytes) {
+    if (limitMiB > std::numeric_limits<std::size_t>::max() / BYTES_PER_MIB ||
+        limitMiB > std::numeric_limits<rlim_t>::max() / BYTES_PER_MIB) {
+        errno = EOVERFLOW;
+        return false;
+    }
+    bytes = static_cast<std::size_t>(limitMiB * BYTES_PER_MIB);
+    const auto requested = static_cast<rlim_t>(bytes);
+    rlimit inherited{};
+    if (getrlimit(RLIMIT_AS, &inherited) != 0) {
+        return false;
+    }
+    if ((inherited.rlim_cur != RLIM_INFINITY && requested > inherited.rlim_cur) ||
+        (inherited.rlim_max != RLIM_INFINITY && requested > inherited.rlim_max)) {
+        errno = EINVAL;
+        return false;
+    }
+    const rlimit limit{requested, requested};
+    return setrlimit(RLIMIT_AS, &limit) == 0;
+}
+
+bool allocationDenied(std::size_t bytes) {
+    // Request the whole configured address space while the advisor already has mappings.
+    void* const allocation = mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+    if (allocation == MAP_FAILED) {
+        if (errno == ENOMEM) {
+            return true;
+        }
+        std::perror("MlAdvisor allocation test");
+        return false;
+    }
+    munmap(allocation, bytes);
+    std::fputs("MlAdvisor address-space test unexpectedly mapped the full limit\n", stderr);
+    return false;
 }
 
 class GateExercise {
@@ -84,9 +126,14 @@ int main(int argc, char** argv) {
     Os::init();
     M2::Options options;
     if (!M2::parseOptions(argc, argv, false, options)) {
-        std::fputs("Usage: MlAdvisor [--transport udp|qnx] [--port N] [--m3 SCENARIO] [--model PATH|--drift-model PATH]\n"
+        std::fputs("Usage: MlAdvisor [--transport udp|qnx] [--port N] [--m3 SCENARIO] [--model PATH|--drift-model PATH] [--address-space-mib MiB] [--cpu-load sporadic|unbudgeted]\n"
                    "The crash scenario requires a run-specific --crash-marker PATH.\n", stderr);
         return 2;
+    }
+    std::size_t addressSpace = 0;
+    if (options.addressSpaceMiB != 0 && !capAddressSpace(options.addressSpaceMiB, addressSpace)) {
+        std::perror("MlAdvisor RLIMIT_AS");
+        return 1;
     }
     bool crashArmed = false;
     if (options.crashMarker != nullptr && access(options.crashMarker, F_OK) != 0) {
@@ -161,6 +208,13 @@ int main(int argc, char** argv) {
                     std::perror("MlAdvisor claim crash marker");
                     return 1;
                 }
+                if (addressSpace != 0) {
+                    if (allocationDenied(addressSpace)) {
+                        event("ADDRESS_SPACE_DENIED", pid, snapshot.session, snapshot.cycle);
+                        event("CRASH_BEGIN", pid, snapshot.session, snapshot.cycle);
+                    }
+                    return 1;
+                }
                 event("CRASH_BEGIN", pid, snapshot.session, snapshot.cycle);
                 // Abrupt termination without a core file that could skew the paired run.
                 kill(getpid(), SIGKILL);
@@ -169,6 +223,10 @@ int main(int argc, char** argv) {
             if (options.scenario == M2::Scenario::Stall && snapshot.cycle >= M2::InjectionCycle &&
                 snapshot.cycle < M2::InjectionCycle + 30) {
                 event(stalled ? "HEARTBEAT" : "STALL_BEGIN", pid, snapshot.session, snapshot.cycle);
+                if (!stalled && options.cpuLoad != M2::CpuLoad::None &&
+                    !M2::exerciseScheduling(options.cpuLoad == M2::CpuLoad::Sporadic)) {
+                    return 1;
+                }
                 stalled = true;
                 session = snapshot.session;
                 lastCycle = snapshot.cycle;

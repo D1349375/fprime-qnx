@@ -87,7 +87,7 @@ commands and acceptance checks for the GDS deployment and the separate trained-a
 | Check | Observed result |
 | --- | --- |
 | Ref and GDS | Clean cross-build and QNX boot, two NO-OP events and rate group 1 telemetry. [Ref results](docs/en/results.md#ref-and-adcs-ground-system) |
-| F Prime OSAL suites with the portability patch | 258 passed, 0 failed, 1 skipped across 17 suites. The guest lacks `/dev/full`. [Suite results](docs/en/results.md#osal-v1) |
+| F Prime OSAL suites with the portability patch | 258 passed, 0 failed, 1 skipped across 17 suites. The guest lacks `/dev/full`. Three additional native CPU and memory checks pass. [Suite results](docs/en/results.md#osal-v1) |
 | ADCS GDS | The stopped advisor's `ProcessDied` reached GDS. FlightSW used FDIR, accepted a fresh session after SLM replacement and reconnected to GDS. [Ground results](docs/en/results.md#ref-and-adcs-ground-system) |
 | ADCS fault cases | Separate FlightSW and advisor processes used UDP and native IPC. The fault matrix exercised FDIR, Gate rejection, sensor isolation and a held IPC reply. [Fault results](docs/en/results.md#deterministic-adcs) |
 | Trained advisor and offline inference | The frozen candidate's cohort has a [restart behavior summary](docs/en/results.md#frozen-candidate-restart-behavior) for fresh-session adoption, replay and revoked-session rejection. The separate OPS-SAT replay matched scores within tolerance and produced matching labels on Linux and QNX. [Model results](docs/en/results.md#trained-advisor-and-offline-replay) |

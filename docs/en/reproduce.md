@@ -40,7 +40,7 @@ Expect a fresh clone, x86-64 cross-build, fresh QNX image and a successful GDS r
 scripts/osal-check.sh
 ```
 
-The script stages the pinned F Prime sources with the [test portability patch](../../adoption/osal-test-portability.patch), cross-builds the selected OSAL executables and runs each in a new QNX guest. Inspect `summary.tsv`, `target-uname.txt` and the per-suite logs in the printed directory. The expected skip is the test that needs `/dev/full`. The ThreadSanitizer suite and unsupported features have separate entries. [OSAL results](results.md#osal-v1)
+The script stages the pinned F Prime sources with the [test portability patch](../../adoption/osal-test-portability.patch), cross-builds the selected OSAL executables and runs each in a new QNX guest. Inspect `summary.tsv`, `target-uname.txt` and the per-suite logs in the printed directory. The native suite checks CPU count, cumulative per-CPU ticks and physical memory through the F Prime OSAL API. The expected skip is the test that needs `/dev/full`. The ThreadSanitizer suite and unsupported features have separate entries. [OSAL results](results.md#osal-v1)
 
 ## M2 process and transport checks
 
@@ -71,6 +71,12 @@ The script starts GDS and boots a QNX guest with FlightSW and the deterministic 
 
 To inspect the web UI, run `scripts/gds-check.sh --ui` and open [localhost:5000](http://localhost:5000/) at the pause before the advisor stops. Open Events to see the command responses and `ProcessDied`. Check Channels for `ControlSource` and `AdvisorSession` at the second pause, before the reconnect check. When connecting a deployment manually, use `FlightSW --m3 normal --gds HOST:PORT` with its generated `FlightTopologyDictionary.json` and GDS `space-packet-space-data-link` framing. Use the host address reachable from the guest for `HOST`.
 
+For the Gate explanation smoke, run `scripts/gds-check.sh --gate-explanation`. The seeded recovery fixture verifies the decoded rule, verdict and reason for rejection and approval. Build and load the dictionary from the same revision as FlightSW.
+
+Run `scripts/gds-check.sh --gate-status` to include the read-only resource manager. On a QNX deployment started with `FlightSW --m3 SCENARIO --gate-status`, `cat /dev/fprime/gate` reads one snapshot of the advisor state, current control source, session and latest observed Gate decision. The check reads the device in small chunks, verifies that a root write open fails and checks that the path disappears on orderly shutdown.
+
+For the isolated security policy check, run `scripts/secpol-check.sh` with built x86-64 deployments. The harness creates a disposable guest and applies [the ADCS policy](../../FprimeQnxReference/qnx/advisor-secpol.txt) after the base system boots. SLM starts the flight and advisor under explicit types. The advisor delivers a result over the native hub. A reader and an advisor-type probe use the same unprivileged UID against the live Gate endpoint. The reader succeeds and the advisor-type probe receives a permission denial. The policy covers the ADCS endpoints while system services use the base guest configuration.
+
 ## M3 deterministic fault cases
 
 ```bash
@@ -83,6 +89,10 @@ Omit the argument for the default full cohort. The cases exercise nominal operat
 read -r -p 'M3 case directory: ' case_dir
 python3 -B FprimeQnxReference/test/int/check-m3.py "$case_dir"
 ```
+
+Run `scripts/m3-check.sh --address-space` for the QNX address-space fault. MlAdvisor accepts `--address-space-mib MiB` and sets the soft and hard resource limits before loading the model. The smoke test expects QNX to deny a bounded mapping with ENOMEM, then uses the regular Q1 checker for fallback, SLM replacement and fresh-session adoption.
+
+Run `scripts/m3-check.sh --q3` for the sporadic control. SLM pins both deployments to CPU 0 and both threads check their affinity. The same bounded advisor workload starts at the same priority in each arm. The command checks that the sporadic arm reaches its low effective priority and passes the original M3 checker. It also checks that the unbudgeted arm retains its original deadline failure. The command records both verdicts and the scheduling evidence in its external evidence directory.
 
 ## E6 and M4 inference setup
 

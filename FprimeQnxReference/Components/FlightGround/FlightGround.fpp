@@ -22,14 +22,14 @@ module M2 {
       severity activity high id 1 \
       format "Advisor session accepted: {}"
 
-    event AdviceRejected(reason: string size 32) \
+    event AdviceRejected(rule: string size 24, reason: string size 72) \
       severity warning low id 2 \
-      format "Advice rejected: {}" \
+      format "Advice rejected by {}. {}" \
       throttle 5
 
-    event GateDecision(rule: string size 24, verdict: string size 16) \
+    event GateDecision(rule: string size 24, verdict: string size 16, reason: string size 72) \
       severity activity low id 3 \
-      format "Gate {}: {}" \
+      format "Gate {} {}. {}" \
       throttle 10
 
     telemetry ControlSource: ControlSource id 0
