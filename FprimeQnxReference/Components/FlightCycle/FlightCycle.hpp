@@ -45,6 +45,7 @@ struct CycleRecord {
     bool sensorFault = false;
     unsigned excluded = 0;
     int fdirCandidate = NoChannel;
+    bool fdirAlert = false;
     Advice checked{};
     Estimate truth{};
     SensorReadings sensors{};
@@ -68,7 +69,8 @@ class FlightCycle final : public FlightCycleComponentBase {
   public:
     explicit FlightCycle(const char* name);
     void schedule(Handoff& handoff, Svc::QnxTimer& timer, EstimateReceiver& receiver,
-                  std::uint64_t firstRelease, std::uint64_t limit, Scenario scenario, std::uint64_t replaySeed);
+                  std::uint64_t firstRelease, std::uint64_t limit, Scenario scenario, std::uint64_t replaySeed,
+                  double driftCutoff);
     std::uint64_t lastCycle() const { return m_lastCycle; }
     std::uint64_t recordDrops() const { return m_recordDrops; }
     bool complete() const { return m_complete; }
@@ -84,6 +86,7 @@ class FlightCycle final : public FlightCycleComponentBase {
     Svc::QnxTimer* m_timer = nullptr;
     Scenario m_scenario = Scenario::Legacy;
     std::uint64_t m_replaySeed = 0;
+    double m_driftCutoff = 0.0;
     Recovery m_recovery;
     EstimateReceiver* m_receiver = nullptr;
     std::array<std::uint64_t, RejectionLimit + 1> m_rejections{};

@@ -50,7 +50,9 @@ Ffn::Ffn(const char* path, Features features) : m_model(new Model) {
         throw std::runtime_error("OpenBLAS did not enter single-thread mode");
     }
 
-    const bool adcs = features == Features::AdcsBias;
+    const bool adcs = features != Features::OpsSatSegment;
+    const char* expectedSchema = adcs ?
+        (features == Features::AdcsDrift ? "adcs-drift" : "adcs-bias") : "opssat-segment";
     const std::size_t expectedInputs = adcs ? BiasFeatureCount : OpsSatFeatureCount;
     const std::size_t expectedHidden = adcs ? 8 : 16;
     std::ifstream file(path);
@@ -58,7 +60,7 @@ Ffn::Ffn(const char* path, Features features) : m_model(new Model) {
     std::string version, schema;
     std::size_t count, hidden;
     if (!(file >> version >> schema >> count >> hidden) || version != "m4-ffn-v1" ||
-        schema != (adcs ? "adcs-bias" : "opssat-segment") || count != expectedInputs || hidden != expectedHidden) {
+        schema != expectedSchema || count != expectedInputs || hidden != expectedHidden) {
         throw std::runtime_error("Could not load the expected FFN feature schema");
     }
 

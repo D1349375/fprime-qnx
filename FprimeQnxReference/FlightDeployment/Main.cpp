@@ -39,9 +39,10 @@ void writeTiming(M2::Handoff& handoff,
                  const std::atomic<bool>& logging,
                  FILE* file,
                  FILE* events,
-                 M2::FlightGround* ground) {
+                 M2::FlightGround* ground,
+                 bool drift) {
     const bool m3 = events != nullptr;
-    const auto write = [file, m3](const M2::CycleRecord& row) {
+    const auto write = [file, m3, drift](const M2::CycleRecord& row) {
         std::fprintf(file, "%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%d,%" PRIu64
                      ",%" PRIu64 ",%" PRIu64 ",%d,%.9f,%.9f,%.9f",
                      row.cycle, row.release, row.start, row.finish, row.output.valid ? 1 : 0, row.snapshotDrops,
@@ -59,6 +60,9 @@ void writeTiming(M2::Handoff& handoff,
                 std::fprintf(file, ",%u", static_cast<unsigned>(reading));
             }
             std::fprintf(file, ",%d,%" PRIu64 ",%" PRIu64, row.fdirCandidate, row.fdirGateNs, row.fdirCandidateNs);
+        }
+        if (drift) {
+            std::fprintf(file, ",%d", row.fdirAlert);
         }
         std::fputc('\n', file);
     };
@@ -307,7 +311,6 @@ bool configureGround(const M2Flight::TopologyState& state) {
     M2Flight::groundRate1.configure(Svc::ActiveRateGroup::ContextArray(0));
     M2Flight::groundRate2.configure(Svc::ActiveRateGroup::ContextArray(0));
     M2Flight::groundRate3.configure(Svc::ActiveRateGroup::ContextArray(0));
-    M2Flight::timer.useFixedPriority();
     M2Flight::groundTimer.useFixedPriority();
     M2Flight::regCommands();
     return true;
@@ -332,7 +335,7 @@ int main(int argc, char** argv) {
     M2::Options options;
     if (!M2::parseOptions(argc, argv, true, options) ||
         (options.scenario == M2::Scenario::Transport && options.transport != M2::TransportKind::Qnx)) {
-        std::fprintf(stderr, "Usage: FlightSW [--transport udp|qnx] [--port N] [--cycles N] [--log PATH] [--m3 SCENARIO] [--link-log PATH] [--m4-seed N] [--gds HOST:PORT]\n");
+        std::fprintf(stderr, "Usage: FlightSW [--transport udp|qnx] [--port N] [--cycles N] [--log PATH] [--m3 SCENARIO] [--link-log PATH] [--m4-seed N] [--drift-cutoff SCORE] [--gds HOST:PORT]\n");
         return 2;
     }
 
@@ -373,6 +376,10 @@ int main(int argc, char** argv) {
         std::setvbuf(events, nullptr, _IOLBF, 0);
         std::fputs("ns,event,pid,session,cycle,sample_ns\n", events);
     }
+    const bool drift = options.driftCutoff > 0.0;
+    if (drift) {
+        std::fputs(",fdir_alert", file);
+    }
     std::fputc('\n', file);
 
     M2::Handoff handoff;
@@ -385,6 +392,9 @@ int main(int argc, char** argv) {
     M2Flight::rateGroup.configure(Svc::PassiveRateGroup::ContextArray{});
     auto& timer = M2Flight::timer;
     auto& flight = M2Flight::flight;
+    // The flight thread keeps its configured FIFO priority whether or not GDS runs. Without this,
+    // the tick pulse would set the receiving thread's effective priority (D72).
+    timer.useFixedPriority();
 
     if (gds && !configureGround(topology)) {
         M2Flight::deinitComponents(topology);
@@ -442,7 +452,7 @@ int main(int argc, char** argv) {
                              std::cref(running), std::ref(counts), m3 ? &linkTrace : nullptr,
                              holdReply ? &pause : nullptr, monitor);
         logger = std::thread(writeTiming, std::ref(handoff), std::ref(linkTrace), std::cref(logging), file, events,
-                             gds ? &M2Flight::ground : nullptr);
+                             gds ? &M2Flight::ground : nullptr, drift);
         if (gds) {
             M2Flight::startTasks(topology);
             groundStarted = true;
@@ -490,7 +500,8 @@ int main(int argc, char** argv) {
     const int scheduleStatus = pthread_setschedparam(pthread_self(), SCHED_FIFO, &priority);
     if (scheduleStatus == 0) {
         const auto firstRelease = M2::monotonicNs() + 100000000;
-        flight.schedule(handoff, timer, receiver, firstRelease, options.cycles, options.scenario, options.replaySeed);
+        flight.schedule(handoff, timer, receiver, firstRelease, options.cycles, options.scenario, options.replaySeed,
+                        options.driftCutoff);
         std::printf("READY pid=%ld transport=%s period_ns=%" PRIu64 " first_release_ns=%" PRIu64
                     " fifo_priority=%d\n", static_cast<long>(getpid()), M2::transportName(options.transport),
                     M2::PeriodNs, firstRelease, priority.sched_priority);
