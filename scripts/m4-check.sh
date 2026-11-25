@@ -12,6 +12,7 @@ usage() {
 Usage: scripts/m4-check.sh QNX_APK_SYSROOT adcs-pilot|adcs
        scripts/m4-check.sh QNX_APK_SYSROOT adcs-drift-host|adcs-drift
        scripts/m4-check.sh QNX_APK_SYSROOT adcs-pair [PAIRS] (default: 10)
+       scripts/m4-check.sh QNX_APK_SYSROOT adcs-q0 [BLOCKS] (default: 10)
        scripts/m4-check.sh QNX_APK_SYSROOT opssat [OPSSAT_V2_DIR]
 EOF
 }
@@ -19,7 +20,7 @@ if [[ $# == 1 && $1 == --help ]]; then usage; exit 0; fi
 if [[ $# -lt 2 || $# -gt 3 ]]; then usage >&2; exit 2; fi
 case "$2:$#" in
     adcs-pilot:2|adcs:2|adcs-drift:2|adcs-drift-host:2|opssat:2|opssat:3) ;;
-    adcs-pair:2|adcs-pair:3)
+    adcs-pair:2|adcs-pair:3|adcs-q0:2|adcs-q0:3)
         pairs="${3:-10}"
         [[ "$pairs" =~ ^[1-9][0-9]*$ && "$pairs" == "$((pairs))" ]] || { echo 'Expected a positive pair count' >&2; exit 2; }
         ;;
@@ -410,6 +411,31 @@ if [[ "$mode" == adcs-pair ]]; then
         fi
         printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$block" "$seed" "${groups[0]}" "$q1" "$q2" "$config_status" \
             >>"$run/pairs.tsv"
+    done
+elif [[ "$mode" == adcs-q0 ]]; then
+    # Q0 keeps the Q1 crash workload and starts only FlightSW under SLM, without the advisor.
+    printf 'block\tseed\tfirst\tq0\tq1\tslm_config\n' >"$run/blocks.tsv"
+    for ((pair = 1; pair <= pairs; ++pair)); do
+        seed=$((3001 + (pair - 1) % 4))
+        block="$(printf '%03d' "$pair")"
+        groups=(q0 q1)
+        if (( pair % 2 == 0 )); then groups=(q1 q0); fi
+        for group in "${groups[@]}"; do
+            advisor=learned
+            if [[ "$group" == q0 ]]; then advisor=fdir; fi
+            run_scenario "$block-$group" "$seed" "$group" crash "$advisor" restart
+        done
+        q0="$block-q0"
+        q1="$block-q1"
+        config_status=PASS
+        # The rendered SLM files may differ only by the model argument of the unstarted advisor.
+        if ! grep -Fq ' --model ' "$run/$q1/m3-slm.xml" || grep -Fq ' --model ' "$run/$q0/m3-slm.xml" ||
+           ! sed 's| --model [^ <]*/model\.txt||' "$run/$q1/m3-slm.xml" | cmp -s "$run/$q0/m3-slm.xml" -; then
+            config_status=FAIL
+            result=1
+        fi
+        printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$block" "$seed" "${groups[0]}" "$q0" "$q1" "$config_status" \
+            >>"$run/blocks.tsv"
     done
 elif [[ "$mode" == adcs-drift ]]; then
     for seed in 3101 3102 3103 3104 3105 3106 3107 3108; do run_seed "$seed"; done

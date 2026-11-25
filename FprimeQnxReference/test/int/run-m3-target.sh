@@ -30,7 +30,7 @@ if [ "$#" -ge 5 ]; then
         esac
     else
         case "$scenario:$5" in
-            normal:fdir|recovery:fdir) entry=flight ;;
+            normal:fdir|recovery:fdir|crash:fdir) entry=flight ;;
             normal:learned|recovery:learned|crash:learned) advisor_options=" --model $target_dir/model.txt" ;;
             *) exit 2 ;;
         esac

@@ -102,7 +102,7 @@ def assess(directory, recovery=None):
     """Check the run and optionally collect Q1/Q2 behavior from its recovered records."""
     config = dict(line.split("=", 1) for line in (directory / "config.txt").read_text().splitlines())
     group = config["group"]
-    advisor_expected = group not in {"fdir_normal", "fdir_recovery"}
+    advisor_expected = group not in {"fdir_normal", "fdir_recovery", "q0"}
     cycles, period, deadline, freshness = (
         int(config[name]) for name in ("cycles", "period_ns", "deadline_ns", "freshness_ns")
     )
@@ -318,7 +318,7 @@ def assess(directory, recovery=None):
                   f"transport_release_ns={release['ns']} "
                   f"transport_client_return_ns={returned}")
 
-    if group in {"q1", "q2", "stall", "recovery", "fdir_recovery"}:
+    if group in {"q1", "q2", "stall", "recovery", "fdir_recovery", "q0"}:
         expected = "gate" if group == "recovery" else "fdir_gate"
         require(any(r[expected] == "APPROVED" and r["excluded"] == 1 for r in records),
                 f"No {expected} approval of the independently faulty channel")
