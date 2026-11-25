@@ -14,13 +14,20 @@
 
 int main(int argc, char** argv) {
     const std::string schema = argc == 4 ? argv[1] : "";
-    if (schema != "adcs-bias" && schema != "opssat-segment") {
-        std::cerr << "Usage: m4-replay adcs-bias|opssat-segment MODEL INPUT.csv\n";
+    M4::Features schemaType;
+    if (schema == "adcs-bias") {
+        schemaType = M4::Features::AdcsBias;
+    } else if (schema == "adcs-drift") {
+        schemaType = M4::Features::AdcsDrift;
+    } else if (schema == "opssat-segment") {
+        schemaType = M4::Features::OpsSatSegment;
+    } else {
+        std::cerr << "Usage: m4-replay adcs-bias|adcs-drift|opssat-segment MODEL INPUT.csv\n";
         return 2;
     }
 
     try {
-        M4::Ffn model(argv[2], schema == "adcs-bias" ? M4::Features::AdcsBias : M4::Features::OpsSatSegment);
+        M4::Ffn model(argv[2], schemaType);
         std::ifstream file(argv[3]);
         if (!file) {
             std::cerr << "Could not open " << argv[3] << '\n';

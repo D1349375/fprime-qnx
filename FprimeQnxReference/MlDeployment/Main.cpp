@@ -13,6 +13,7 @@
 
 #ifdef FPRIME_QNX_ML_ADVISOR
 #include <exception>
+#include "Components/FlightCycle/AdcsReplay.hpp"
 #include "MlDeployment/BiasFeatures.hpp"
 #include "MlDeployment/Ffn.hpp"
 #endif
@@ -83,7 +84,7 @@ int main(int argc, char** argv) {
     Os::init();
     M2::Options options;
     if (!M2::parseOptions(argc, argv, false, options)) {
-        std::fputs("Usage: MlAdvisor [--transport udp|qnx] [--port N] [--m3 SCENARIO] [--model PATH]\n"
+        std::fputs("Usage: MlAdvisor [--transport udp|qnx] [--port N] [--m3 SCENARIO] [--model PATH|--drift-model PATH]\n"
                    "The crash scenario requires a run-specific --crash-marker PATH.\n", stderr);
         return 2;
     }
@@ -100,12 +101,14 @@ int main(int argc, char** argv) {
     std::unique_ptr<M4::Ffn> model;
     if (options.model != nullptr) {
         try {
-            model = std::make_unique<M4::Ffn>(options.model, M4::Features::AdcsBias);
+            const auto features = options.driftModel ? M4::Features::AdcsDrift : M4::Features::AdcsBias;
+            model = std::make_unique<M4::Ffn>(options.model, features);
         } catch (const std::exception& error) {
             std::fprintf(stderr, "MlAdvisor model: %s\n", error.what());
             return 1;
         }
-        std::puts("MODEL mlpack=4.7.0 schema=adcs-bias openblas_threads=1");
+        std::printf("MODEL mlpack=4.7.0 schema=%s openblas_threads=1\n",
+                    options.driftModel ? "adcs-drift" : "adcs-bias");
     }
 #else
     if (options.model != nullptr) {
@@ -184,7 +187,17 @@ int main(int argc, char** argv) {
                         const auto prediction = model->predict(features.data(), features.size());
                         score = prediction.score;
                         result.flag = prediction.alert;
-                        result.action = prediction.alert ? M2::ExcludeSunSensor : 0;
+                        if (prediction.alert) {
+                            // For the drift comparison, warn before proposing an exclusion.
+                            // FlightSW independently checks the proposal on its current readings.
+                            constexpr auto channel = M4::BiasedChannel;
+                            const auto& samples = snapshot.sensors;
+                            if (!options.driftModel ||
+                                M2::confirmsFault(samples, channel, M2::fitSun(samples, 1U << channel))) {
+                                result.action = M2::ExcludeSunSensor;
+                                result.channel = channel;
+                            }
+                        }
                     } catch (const std::exception& error) {
                         // Leave the session without producing a fresh result. SLM may restart the advisor.
                         std::fprintf(stderr, "MlAdvisor inference: %s\n", error.what());

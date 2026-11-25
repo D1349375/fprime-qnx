@@ -6,7 +6,7 @@
 
 namespace M4 {
 
-enum class Features { AdcsBias, OpsSatSegment };
+enum class Features { AdcsBias, AdcsDrift, OpsSatSegment };
 
 struct Prediction {
     double score;

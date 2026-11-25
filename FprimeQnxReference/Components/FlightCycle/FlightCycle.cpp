@@ -41,7 +41,8 @@ void FlightCycle::schedule(Handoff& handoff,
                            std::uint64_t firstRelease,
                            std::uint64_t limit,
                            Scenario scenario,
-                           std::uint64_t replaySeed) {
+                           std::uint64_t replaySeed,
+                           double driftCutoff) {
     m_handoff = &handoff;
     m_timer = &timer;
     m_receiver = &receiver;
@@ -49,6 +50,7 @@ void FlightCycle::schedule(Handoff& handoff,
     m_limit = limit;
     m_scenario = scenario;
     m_replaySeed = replaySeed;
+    m_driftCutoff = driftCutoff;
 }
 
 void FlightCycle::fallBack(CycleRecord& record, const char* reason, bool revoke) {
@@ -70,7 +72,11 @@ bool FlightCycle::countRejection(std::uint64_t now) {
 void FlightCycle::recover(const Snapshot& snapshot, CycleRecord& record) {
     const auto now = snapshot.sampledNs;
     const auto& sensors = snapshot.sensors;
-    m_recovery.observe(sensors);
+    if (m_driftCutoff > 0.0) {
+        record.fdirAlert = m_recovery.observeChannel(sensors, M4::BiasedChannel, m_driftCutoff);
+    } else {
+        m_recovery.observe(sensors);
+    }
     record.fdirCandidate = m_recovery.fdirCandidate();
     if (record.fdirCandidate != NoChannel) {
         record.fdirCandidateNs = monotonicNs();
@@ -143,7 +149,13 @@ void FlightCycle::run_handler(FwIndexType, U32) {
 
     const bool legacy = m_scenario == Scenario::Legacy;
     const bool seeded = m_replaySeed != 0;
-    const auto replay = seeded ? M4::sample(m_replaySeed, cycle, m_scenario != Scenario::Normal) : M4::ReplaySample{};
+    auto fault = M4::SensorFault::None;
+    if (m_scenario == Scenario::Drift) {
+        fault = M4::SensorFault::Drift;
+    } else if (m_scenario != Scenario::Normal) {
+        fault = M4::SensorFault::Bias;
+    }
+    const auto replay = seeded ? M4::sample(m_replaySeed, cycle, fault) : M4::ReplaySample{};
     const auto readings = legacy ? sampleSensors(cycle) : seeded ? replay.readings : recoverySensors(m_scenario, cycle);
     const Snapshot snapshot{cycle, start, readings};
     CycleRecord record{};

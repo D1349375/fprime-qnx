@@ -59,23 +59,47 @@ def benchmark(name, expected, results):
     true_positives = sum(a == b == 1 for a, b in zip(y, labels))
     false_positives = sum(a == 0 and b == 1 for a, b in zip(y, labels))
     false_negatives = sum(a == 1 and b == 0 for a, b in zip(y, labels))
-    print(f"{name} AP={average_precision_score(y, scores):.9f} "
-          f"precision={precision_score(y, labels, zero_division=0):.9f} "
-          f"recall={recall_score(y, labels, zero_division=0):.9f} MCC={matthews_corrcoef(y, labels):.9f} "
-          f"tp={true_positives} fp={false_positives} fn={false_negatives} "
-          f"tn={len(y) - true_positives - false_positives - false_negatives}")
+    if any(y):
+        print(f"{name} AP={average_precision_score(y, scores):.9f} "
+              f"precision={precision_score(y, labels, zero_division=0):.9f} "
+              f"recall={recall_score(y, labels, zero_division=0):.9f} MCC={matthews_corrcoef(y, labels):.9f} "
+              f"tp={true_positives} fp={false_positives} fn={false_negatives} "
+              f"tn={len(y) - true_positives - false_positives - false_negatives}")
+    else:
+        print(f"{name} fp={false_positives} tn={len(y) - false_positives}")
     ordered = sorted(prediction.ns for prediction in predictions)
     print(f"{name}_ns p50={ordered[math.ceil(len(ordered) * .50)-1]} "
           f"p99={ordered[math.ceil(len(ordered) * .99)-1]} max={ordered[-1]}")
 
 
-def compare(directory):
+def replay_cases(directory):
     with (directory / "expected.csv").open(newline="", encoding="utf-8") as file:
         expected = list(csv.DictReader(file))
     cases = {row["case"] for row in expected}
     if not cases or len(cases) != len(expected):
         raise ValueError("Expected a nonempty, unique set of evaluation cases")
     threshold = float((directory / "model.txt").read_text().splitlines()[0].split()[-1])
+    return expected, cases, threshold
+
+
+def compare_host(directory):
+    expected, cases, threshold = replay_cases(directory)
+    host = read_predictions(directory / "host.csv")
+    mismatches = 0
+    for row in expected:
+        result = host.get(row["case"])
+        reference = float(row["reference_score"])
+        if (not isinstance(result, Prediction) or not score_close(result.score, reference) or
+                result.label != int(reference >= threshold)):
+            mismatches += 1
+    extra = len(host.keys() - cases)
+    print(f"expected={len(expected)} missing_failed_or_mismatched={mismatches} extra={extra}")
+    benchmark("linux", expected, host)
+    return bool(mismatches or extra)
+
+
+def compare(directory):
+    expected, cases, threshold = replay_cases(directory)
     host = read_predictions(directory / "host.csv")
     qnx = read_predictions(directory / "qnx.csv")
 
@@ -129,8 +153,9 @@ def compare(directory):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=Path)
+    parser.add_argument("--host-only", action="store_true")
     args = parser.parse_args()
-    return compare(args.directory)
+    return compare_host(args.directory) if args.host_only else compare(args.directory)
 
 
 if __name__ == "__main__":
