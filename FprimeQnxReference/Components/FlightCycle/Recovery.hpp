@@ -188,6 +188,9 @@ class Recovery {
         // A calibrated warning can precede the independent evidence needed for a proposal.
         const bool propose = alert && !(m_excluded & mask) && confirmsFault(samples, channel, alternate);
         updatePersistence(propose ? static_cast<int>(channel) : NoChannel, m_fdirCandidate, m_fdirCount);
+        // Until the channel is excluded, a warned reading can bias the fused fit while it still
+        // passes the consistency bound. Withhold the estimate instead of committing it.
+        m_suspected = alert ? (m_suspected | mask) : (m_suspected & ~mask);
         return alert;
     }
 
@@ -242,7 +245,7 @@ class Recovery {
 
     Estimate estimate(const SensorReadings& samples, std::uint64_t cycle) {
         const auto fit = fitSun(samples, m_excluded);
-        if (!consistent(fit)) {
+        if (!consistent(fit) || (m_suspected & ~m_excluded) != 0) {
             m_degradedThrough = cycle + MinimumDegradedCycles - 1;
         }
         if (cycle <= m_degradedThrough) {
@@ -266,6 +269,7 @@ class Recovery {
     }
 
     unsigned m_excluded = 0;
+    unsigned m_suspected = 0;
     int m_fdirCandidate = NoChannel;
     unsigned m_fdirCount = 0;
     int m_proposed = NoChannel;

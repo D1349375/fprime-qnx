@@ -311,7 +311,6 @@ bool configureGround(const M2Flight::TopologyState& state) {
     M2Flight::groundRate1.configure(Svc::ActiveRateGroup::ContextArray(0));
     M2Flight::groundRate2.configure(Svc::ActiveRateGroup::ContextArray(0));
     M2Flight::groundRate3.configure(Svc::ActiveRateGroup::ContextArray(0));
-    M2Flight::timer.useFixedPriority();
     M2Flight::groundTimer.useFixedPriority();
     M2Flight::regCommands();
     return true;
@@ -393,6 +392,9 @@ int main(int argc, char** argv) {
     M2Flight::rateGroup.configure(Svc::PassiveRateGroup::ContextArray{});
     auto& timer = M2Flight::timer;
     auto& flight = M2Flight::flight;
+    // The flight thread keeps its configured FIFO priority whether or not GDS runs. Without this,
+    // the tick pulse would set the receiving thread's effective priority (D72).
+    timer.useFixedPriority();
 
     if (gds && !configureGround(topology)) {
         M2Flight::deinitComponents(topology);

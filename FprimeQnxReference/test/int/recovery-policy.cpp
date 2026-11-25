@@ -41,6 +41,25 @@ int main() {
     const auto reference = truthSun(InjectionCycle);
     assert(estimate.valid && dot({estimate.x, estimate.y, estimate.z}, reference) > 0.999999);
 
+    // A drift warning withholds the fused estimate until the warned channel is excluded.
+    Recovery drift;
+    auto ramp = clean;
+    ramp[0] += 20;
+    assert(drift.estimate(ramp, 1).valid);
+    assert(drift.observeChannel(ramp, 0, 0.01));
+    assert(drift.fdirCandidate() == NoChannel);
+    assert(!drift.estimate(ramp, 2).valid);
+    assert(!drift.observeChannel(clean, 0, 0.01));
+    assert(!drift.estimate(clean, 2 + MinimumDegradedCycles - 1).valid);
+    assert(drift.estimate(clean, 2 + MinimumDegradedCycles).valid);
+    for (unsigned i = 0; i < FdirPersistence; ++i) {
+        assert(drift.observeChannel(failed, 0, 0.01));
+    }
+    assert(drift.fdirCandidate() == 0);
+    assert(std::strcmp(drift.evaluate(failed, ExcludeSunSensor, 0, true, now), "APPROVED") == 0);
+    assert(drift.observeChannel(failed, 0, 0.01));
+    assert(drift.estimate(failed, 100).valid);
+
     EstimateReceiver receiver;
     assert(receiver.accept(1, estimate));
     assert(!receiver.accept(1, {}));

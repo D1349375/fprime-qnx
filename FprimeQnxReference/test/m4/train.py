@@ -30,7 +30,7 @@ OPSSAT_FEATURES = (
     "diff_peaks", "diff2_peaks", "diff_var", "diff2_var", "kurtosis", "skew",
 )
 ADCS_FEATURES = ("x", "y", "z", "xy", "residual")
-DRIFT_SEEDS = {"fit": range(1101, 1117), "validation": range(2101, 2117), "test": range(3101, 3105)}
+DRIFT_SEEDS = {"fit": range(1101, 1117), "validation": range(2101, 2117), "test": range(3101, 3109)}
 DRIFT_CALIBRATION_MARGIN = 1e-8
 
 

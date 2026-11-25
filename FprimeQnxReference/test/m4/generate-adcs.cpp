@@ -20,7 +20,7 @@ int main(int argc, char** argv) {
     const Split biasSplits[] = {{"fit", 1001, 1016, true}, {"validation", 2001, 2004, true},
                                 {"test", 3001, 3004, true}};
     const Split driftSplits[] = {{"fit", 1101, 1116, true}, {"validation", 2101, 2116, false},
-                                  {"test", 3101, 3104, true}};
+                                  {"test", 3101, 3108, true}};
     const auto& splits = drift ? driftSplits : biasSplits;
     std::cout << (drift ? "split,seed,drift,cycle,label,fdir_residual,confirmed,truth_x,truth_y,truth_z"
                         : "split,seed,bias,cycle,label,fdir_candidate")

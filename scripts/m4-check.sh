@@ -412,7 +412,7 @@ if [[ "$mode" == adcs-pair ]]; then
             >>"$run/pairs.tsv"
     done
 elif [[ "$mode" == adcs-drift ]]; then
-    for seed in 3101 3102 3103 3104; do run_seed "$seed"; done
+    for seed in 3101 3102 3103 3104 3105 3106 3107 3108; do run_seed "$seed"; done
     "$python" "$fixture/assess-drift.py" --pairs "$run" >"$run/drift-pairs.json" || result=1
     printf 'ADCS slow drift pairs: %s\n' "$run/drift-pairs.json"
 elif [[ "$mode" == adcs-pilot ]]; then
