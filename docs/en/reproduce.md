@@ -75,6 +75,8 @@ For the Gate explanation smoke, run `scripts/gds-check.sh --gate-explanation`. T
 
 Run `scripts/gds-check.sh --gate-status` to include the read-only resource manager. On a QNX deployment started with `FlightSW --m3 SCENARIO --gate-status`, `cat /dev/fprime/gate` reads one snapshot of the advisor state, current control source, session and latest observed Gate decision. The check reads the device in small chunks, verifies that a root write open fails and checks that the path disappears on orderly shutdown.
 
+For the isolated security policy check, run `scripts/secpol-check.sh` with built x86-64 deployments. The harness creates a disposable guest and applies [the ADCS policy](../../FprimeQnxReference/qnx/advisor-secpol.txt) after the base system boots. SLM starts the flight and advisor under explicit types. The advisor delivers a result over the native hub. A reader and an advisor-type probe use the same unprivileged UID against the live Gate endpoint. The reader succeeds and the advisor-type probe receives a permission denial. The policy covers the ADCS endpoints while system services use the base guest configuration.
+
 ## M3 deterministic fault cases
 
 ```bash
