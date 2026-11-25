@@ -18,7 +18,7 @@ and the return of a separate onboard machine learning advisor.
 | Upstream | Standalone port with [`nasa/fprime` v4.4.2](https://github.com/nasa/fprime/tree/f22ce8f2f2943e641d454e9daa7f129e6c878d32) as a submodule at `f22ce8f2f2943e641d454e9daa7f129e6c878d32`. |
 | Upstream contribution | Posted to `nasa/fprime` on 2026-11-24: [platform discussion #6436](https://github.com/nasa/fprime/discussions/6436) and [POSIX UART issue #6437](https://github.com/nasa/fprime/issues/6437). No upstream pull request yet. [Status](docs/en/upstream.md) |
 | QNX target | QNX SDP 8.0.6 and QNX 8.0.0 x86-64 on QEMU/KVM under Ubuntu 24.04 and WSL2. [Coverage](docs/en/evidence-index.md#target-and-host-coverage) |
-| Frozen target source | [`029fadceb532034c91905a6e10007f61ccc9f8d7`](https://github.com/D1349375/fprime-qnx/commit/029fadceb532034c91905a6e10007f61ccc9f8d7). [Evidence index](docs/en/evidence-index.md) |
+| Frozen target source | [`71fe650b3ba43e0afc77f15d8f6776c840cbffa9`](https://github.com/D1349375/fprime-qnx/commit/71fe650b3ba43e0afc77f15d8f6776c840cbffa9). [Evidence index](docs/en/evidence-index.md) |
 | Toolchain | `qcc` GCC 12.2.0, CMake and `fprime-util`. [Host setup](docs/en/host-setup.md) |
 | License | [Apache-2.0](LICENSE) |
 | CI | [![Host checks](https://github.com/D1349375/fprime-qnx/actions/workflows/host-checks.yml/badge.svg)](https://github.com/D1349375/fprime-qnx/actions/workflows/host-checks.yml) Host checks only. |
@@ -75,8 +75,8 @@ linked here after recording.
 | Native message passing | [QnxMsgDriver server and client](https://github.com/D1349375/fprime-qnx/blob/84e722f0ed0f67eec93860204451d048032af11d/FprimeQnx/Drv/QnxMsgDriver/QnxMsgDriver.cpp#L28-L141) | FlightSW and the advisor exchange snapshots and advice in different processes. |
 | Disconnect and unblock pulses | [Driver pulse handling](https://github.com/D1349375/fprime-qnx/blob/84e722f0ed0f67eec93860204451d048032af11d/FprimeQnx/Drv/QnxMsgDriver/QnxMsgDriver.cpp#L49-L95) | The held-reply case ties the unblock pulse to the pending receive ID. |
 | Process isolation and SLM | [SLM template](https://github.com/D1349375/fprime-qnx/blob/84e722f0ed0f67eec93860204451d048032af11d/FprimeQnxReference/qnx/m3-slm.xml.in#L2-L22) | FlightSW uses FDIR before accepting a result from the replacement session. |
-| Process-manager death notification | [QnxProcessMonitor](https://github.com/D1349375/fprime-qnx/blob/029fadceb532034c91905a6e10007f61ccc9f8d7/FprimeQnx/Svc/QnxProcessMonitor/QnxProcessMonitor.cpp#L32-L108) · [Event schema](https://github.com/D1349375/fprime-qnx/blob/029fadceb532034c91905a6e10007f61ccc9f8d7/FprimeQnx/Svc/QnxProcessMonitor/QnxProcessMonitor.fpp#L9-L11) | GDS records one `ProcessDied` for the stopped advisor. |
-| FIFO scheduling | [Flight scheduling](https://github.com/D1349375/fprime-qnx/blob/029fadceb532034c91905a6e10007f61ccc9f8d7/FprimeQnxReference/FlightDeployment/Main.cpp#L486-L504) | The ground harness checks the flight thread's scheduling policy. |
+| Process-manager death notification | [QnxProcessMonitor](https://github.com/D1349375/fprime-qnx/blob/71fe650b3ba43e0afc77f15d8f6776c840cbffa9/FprimeQnx/Svc/QnxProcessMonitor/QnxProcessMonitor.cpp#L32-L108) · [Event schema](https://github.com/D1349375/fprime-qnx/blob/71fe650b3ba43e0afc77f15d8f6776c840cbffa9/FprimeQnx/Svc/QnxProcessMonitor/QnxProcessMonitor.fpp#L9-L11) | GDS records one `ProcessDied` for the stopped advisor. |
+| FIFO scheduling | [Flight scheduling](https://github.com/D1349375/fprime-qnx/blob/71fe650b3ba43e0afc77f15d8f6776c840cbffa9/FprimeQnxReference/FlightDeployment/Main.cpp#L496-L514) | The ground harness checks the flight thread's scheduling policy. |
 | Shared memory and kernel instrumentation | [Crash marker](https://github.com/D1349375/fprime-qnx/blob/d96c9f5a3696e620c65c507f7552f2d9c007cb78/FprimeQnxReference/MlDeployment/Main.cpp#L154-L164) · [Local trace runner](https://github.com/D1349375/fprime-qnx/blob/d96c9f5a3696e620c65c507f7552f2d9c007cb78/FprimeQnxReference/test/int/run-m3-traced.sh#L8-L21) | The harness checks one-shot crash injection. The optional diagnostic runner captures local evidence. |
 
 The [QNX Evidence Index](docs/en/evidence-index.md) gives the target revisions,
@@ -90,7 +90,8 @@ commands and acceptance checks for the GDS deployment and the separate trained-a
 | F Prime OSAL suites with the portability patch | 258 passed, 0 failed, 1 skipped across 17 suites. The guest lacks `/dev/full`. [Suite results](docs/en/results.md#osal-v1) |
 | ADCS GDS | The stopped advisor's `ProcessDied` reached GDS. FlightSW used FDIR, accepted a fresh session after SLM replacement and reconnected to GDS. [Ground results](docs/en/results.md#ref-and-adcs-ground-system) |
 | ADCS fault cases | Separate FlightSW and advisor processes used UDP and native IPC. The fault matrix exercised FDIR, Gate rejection, sensor isolation and a held IPC reply. [Fault results](docs/en/results.md#deterministic-adcs) |
-| Trained advisor and offline inference | The frozen E5 cohort has a [restart behavior summary](docs/en/results.md#frozen-e5-restart-behavior) for fresh-session adoption, replay and revoked-session rejection. The separate OPS-SAT replay matched scores within tolerance and produced matching labels on Linux and QNX. [Model results](docs/en/results.md#trained-advisor-and-offline-replay) |
+| Trained advisor and offline inference | The frozen candidate's cohort has a [restart behavior summary](docs/en/results.md#frozen-candidate-restart-behavior) for fresh-session adoption, replay and revoked-session rejection. The separate OPS-SAT replay matched scores within tolerance and produced matching labels on Linux and QNX. [Model results](docs/en/results.md#trained-advisor-and-offline-replay) |
+| Slow sensor drift | On every held-out drift seed, both detector arms isolated the drifting sensor and recovered. Committed estimates stayed within the angle limit. The conventional residual warned before the FFN. [Drift results](docs/en/results.md#slow-sensor-drift) |
 
 ## Adopt it
 
@@ -108,7 +109,7 @@ and the F Prime tools as described in [Host setup](docs/en/host-setup.md).
 ```bash
 git clone --recurse-submodules https://github.com/D1349375/fprime-qnx.git
 cd fprime-qnx
-git checkout --detach 029fadceb532034c91905a6e10007f61ccc9f8d7
+git checkout --detach 71fe650b3ba43e0afc77f15d8f6776c840cbffa9
 git submodule update --init --recursive
 source "$HOME/qnx800/qnxsdp-env.sh"
 source "$HOME/.venvs/fprime-qnx/bin/activate"
@@ -123,8 +124,9 @@ model preparation, replay and SDK-free host checks.
 Target evidence covers an x86-64 QNX guest under WSL2 and QEMU/KVM. AArch64 has a
 toolchain file. AArch64 builds and execution and physical QNX hardware remain
 unverified. Repeated guest tests observed occasional missing cycles. ADCS uses
-simulated sensors and one learned fault family. The recorded exercise saw FDIR
-and the FFN first alert in the same cycle. Hosted CI runs on Linux.
+simulated sensors with a fixed bias and a slow drift on one sensor. In the bias
+exercise FDIR and the FFN first alerted in the same cycle. In the drift comparison
+the conventional residual warned first. Hosted CI runs on Linux.
 [Full limitations](docs/en/limitations.md)
 
 ## Project documents

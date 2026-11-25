@@ -48,10 +48,33 @@ The pinned F Prime v4.4.2 OSAL sources ran with the project's [test portability 
 ## Trained advisor and offline replay
 
 - **E6 fixed-weight fixture.** The Linux host and QNX guest ran the same mlpack FFN with fixed weights. Labels matched and scores met the configured tolerance against the independent reference. [Inference rerun](reproduce.md#e6-and-m4-inference-setup)
-- **M4 trained ADCS advisor.** The frozen FFN supplies advice during a simulated +X sun-sensor bias. The recorded exercise observed sensor isolation and stable recovery after detection. The frozen candidate ran the paired repair-policy exercise. See the generated recovery summary below and the timing limits for the scope of that evidence. [Restart evidence](evidence-index.md#trained-advisor-recovery) · [Timing scope](limitations.md)
+- **M4 trained ADCS advisor.** The frozen FFN supplies advice during a simulated +X sun-sensor bias. A separate FFN and a conventional residual are compared on a slow drift of the same sensor. The recorded exercise observed sensor isolation and stable recovery after detection. The frozen candidate ran the paired repair-policy exercise. See the generated recovery summary below and the timing limits for the scope of that evidence. [Restart evidence](evidence-index.md#trained-advisor-recovery) · [Timing scope](limitations.md)
 - **OPS-SAT offline inference.** The separate FFN uses the dataset authors' split. It fits preprocessing on training data and freezes the classification threshold on validation data before applying it to the published test split. Linux and QNX replay labels matched and scores met the configured tolerance. [Training](../../FprimeQnxReference/test/m4/train.py) · [Replay checker](../../FprimeQnxReference/test/m4/compare.py) · [OPSSAT-AD v2](https://doi.org/10.5281/zenodo.15108715)
 
-### Frozen E5 restart behavior
+### Frozen candidate restart behavior
+
+The application behavior summary below was generated with `fault-report.py --public` for [`71fe650b3ba43e0afc77f15d8f6776c840cbffa9`](https://github.com/D1349375/fprime-qnx/commit/71fe650b3ba43e0afc77f15d8f6776c840cbffa9).
+
+- The SLM settings check passed in 10 of 10 recorded pairs.
+- The restarted advisor rejoined with a new session in 10 of 10 recorded pairs.
+- An adopted result from the new session matched the held-out replay in 10 of 10 recorded pairs.
+- FlightSW rejected advice from the revoked session in 10 of 10 recorded pairs.
+- Behavior evidence was missing or inconclusive in 0 of 10 restart trials.
+
+The case checker evaluated every planned release against the declared deadline. The full verdict, both repair arms and trace evidence are kept on the test host. [Reproduce the paired run](reproduce.md#m4-paired-repair-policy-check) · [Timing scope](limitations.md)
+
+### Slow sensor drift
+
+The drift cohort ran eight held-out seeds, each with a healthy and a drifting case for the FDIR-only and learned-advisor arms. Four seeds repeat the first E7 comparison and four had not been run before. Every case passed the original case checker and the drift assessor.
+
+- Each arm's first warning matched its offline replay. No healthy case raised a warning.
+- Both arms isolated the drifting sensor once through the RecoveryGate and recovered for the rest of the run.
+- While FlightSW's own residual warned and the sensor was not yet excluded, FlightSW withheld the estimate. Every committed estimate stayed within the angle limit.
+- The conventional residual warned and isolated the sensor before the FFN on every drift seed.
+
+The comparison covers one synthetic drift on one sensor and one illumination family. [Drift design](../zh/決策與變更紀錄.md#d62--calibrate-and-pair-the-slow-drift-detectors-2026-11-24) · [Pre-registered round](../zh/決策與變更紀錄.md#d75--integrate-e7-guard-the-drift-estimate-and-pre-register-the-acceptance-round-2026-11-25) · [Reproduce](reproduce.md#m4-slow-sensor-drift-comparison)
+
+### Earlier E5 restart behavior
 
 The application behavior summary below was generated with `fault-report.py --public` for [`029fadceb532034c91905a6e10007f61ccc9f8d7`](https://github.com/D1349375/fprime-qnx/commit/029fadceb532034c91905a6e10007f61ccc9f8d7).
 

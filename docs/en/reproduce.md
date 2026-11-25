@@ -5,12 +5,12 @@ Follow [Host setup](host-setup.md) for Ubuntu, KVM, the libvirt guest network an
 
 ## Checkout and environment
 
-Use the frozen E5 target source for the commands below. It includes the E2 process monitor, the paired report and the host checks.
+Use the frozen target source for the commands below. It includes the E2 process monitor, the slow-drift comparison, the paired report and the host checks.
 
 ```bash
 git clone --no-checkout https://github.com/D1349375/fprime-qnx.git
 cd fprime-qnx
-git checkout --detach 029fadceb532034c91905a6e10007f61ccc9f8d7
+git checkout --detach 71fe650b3ba43e0afc77f15d8f6776c840cbffa9
 git submodule update --init --recursive
 git rev-parse HEAD
 git submodule status --recursive
