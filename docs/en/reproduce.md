@@ -71,6 +71,10 @@ The script starts GDS and boots a QNX guest with FlightSW and the deterministic 
 
 To inspect the web UI, run `scripts/gds-check.sh --ui` and open [localhost:5000](http://localhost:5000/) at the pause before the advisor stops. Open Events to see the command responses and `ProcessDied`. Check Channels for `ControlSource` and `AdvisorSession` at the second pause, before the reconnect check. When connecting a deployment manually, use `FlightSW --m3 normal --gds HOST:PORT` with its generated `FlightTopologyDictionary.json` and GDS `space-packet-space-data-link` framing. Use the host address reachable from the guest for `HOST`.
 
+For the Gate explanation smoke, run `scripts/gds-check.sh --gate-explanation`. The seeded recovery fixture verifies the decoded rule, verdict and reason for rejection and approval. Build and load the dictionary from the same revision as FlightSW.
+
+Run `scripts/gds-check.sh --gate-status` to include the read-only resource manager. On a QNX deployment started with `FlightSW --m3 SCENARIO --gate-status`, `cat /dev/fprime/gate` reads one snapshot of the advisor state, current control source, session and latest observed Gate decision. The check reads the device in small chunks, verifies that a root write open fails and checks that the path disappears on orderly shutdown.
+
 ## M3 deterministic fault cases
 
 ```bash

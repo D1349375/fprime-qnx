@@ -24,6 +24,7 @@ struct Options {
     const char* crashMarker = nullptr;
     std::string gdsHost;
     std::uint16_t gdsPort = 0;
+    bool gateStatus = false;
 };
 
 inline bool readUnsigned(const char* text, std::uint64_t& value) {
@@ -50,6 +51,10 @@ inline bool readScenario(const char* text, Scenario& scenario) {
 inline bool parseOptions(int argc, char** argv, bool flight, Options& options) {
     for (int i = 1; i < argc; ++i) {
         const char* key = argv[i];
+        if (flight && std::strcmp(key, "--gate-status") == 0) {
+            options.gateStatus = true;
+            continue;
+        }
         if (++i == argc) {
             return false;
         }

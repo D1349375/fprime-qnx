@@ -9,17 +9,19 @@ project=$root/FprimeQnxReference
 ui=0
 rounds=0
 scene=normal
+gate_status=0
 case "${1:-}" in
     --ui) ui=1; shift ;;
     --gate-explanation) scene=recovery; shift ;;
+    --gate-status) scene=recovery; gate_status=1; shift ;;
     --timing)
         [[ "${2:-}" =~ ^[1-9][0-9]*$ ]] || { echo 'Expected a positive timing round count' >&2; exit 2; }
         rounds=$2
         shift 2
         ;;
-    --help) echo 'Usage: scripts/gds-check.sh [--ui | --gate-explanation | --timing ROUNDS]'; exit 0 ;;
+    --help) echo 'Usage: scripts/gds-check.sh [--ui | --gate-explanation | --gate-status | --timing ROUNDS]'; exit 0 ;;
 esac
-[[ $# -eq 0 ]] || { echo 'Usage: scripts/gds-check.sh [--ui | --gate-explanation | --timing ROUNDS]' >&2; exit 2; }
+[[ $# -eq 0 ]] || { echo 'Usage: scripts/gds-check.sh [--ui | --gate-explanation | --gate-status | --timing ROUNDS]' >&2; exit 2; }
 
 : "${QNX_TARGET:?Source the QNX SDP environment first}"
 sdk=$QNX_TARGET/x86_64
@@ -221,7 +223,7 @@ wait_log "$run/capture/stdout.log" '^GDS capture ready$'
 events=$run/capture/event.log
 channels=$run/capture/channel.log
 ssh "${ssh_opts[@]}" "root@$guest" \
-    "sh '$target_dir/run-gds-target.sh' '$target_dir' '$host_ip:$port' '$seed' 0 '$scene'" \
+    "sh '$target_dir/run-gds-target.sh' '$target_dir' '$host_ip:$port' '$seed' 0 '$scene' '$gate_status'" \
     </dev/null >"$run/target-ssh.log" 2>&1 &
 target_pid=$!
 
@@ -253,6 +255,22 @@ if [[ "$scene" == recovery ]]; then
     wait_log "$events" '\.ground\.GateDecision,.*Gate R[0-9]_[A-Z_]+ REJECTED\. [[:alpha:]]'
     wait_log "$events" '\.ground\.GateDecision,.*Gate APPROVED APPROVED\. Independent checks permit the sensor exclusion'
     printf 'PASS GDS shows Gate approval and rejection reasons\n'
+fi
+
+if (( gate_status )); then
+    ssh "${ssh_opts[@]}" "root@$guest" /bin/sh -s >"$run/gate-status.txt" 2>"$run/gate-status.err" <<'TARGET'
+set -eu
+test -c /dev/fprime/gate
+dd if=/dev/fprime/gate bs=7 2>/dev/null
+if (printf 'write must fail\n' >/dev/fprime/gate); then
+    echo 'Gate status unexpectedly accepted a write open' >&2
+    exit 1
+fi
+TARGET
+    grep -Fxq 'advisor=active' "$run/gate-status.txt" || fail 'Gate status did not report an active advisor'
+    grep -Eq '^last_decision=(APPROVED|R[0-9]_[A-Z_]+)$' "$run/gate-status.txt" || fail 'Gate status lacks a decision'
+    grep -Eq '^advisor_rejections=[1-9][0-9]*$' "$run/gate-status.txt" || fail 'Gate status lacks a rejection count'
+    printf 'PASS Gate snapshot and write denial\n'
 fi
 
 if (( ui )); then
@@ -334,6 +352,9 @@ printf 'PASS FlightSW kept running and GDS reconnected\n'
 ssh "${ssh_opts[@]}" "root@$guest" "kill -TERM '$flight_pid'"
 wait "$target_pid" || fail 'FlightSW or SLM did not shut down cleanly'
 target_pid=
+if (( gate_status )); then
+    ssh "${ssh_opts[@]}" "root@$guest" 'test ! -e /dev/fprime/gate' || fail 'Gate status path survived shutdown'
+fi
 python3 "$project/test/int/check-gds.py" "$run/capture" "$crash_event" "$crash_channel" "$advisor_pid" \
     --sessions "$run/sessions.csv" >"$run/final-verdict.txt" 2>&1 || {
         cat "$run/final-verdict.txt"

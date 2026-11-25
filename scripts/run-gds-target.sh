@@ -2,13 +2,15 @@
 # Run a staged GDS scenario under SLM inside the QNX test guest.
 set -eu
 
-[ "$#" -eq 4 ] || [ "$#" -eq 5 ] || exit 2
+case "$#" in 4|5|6) ;; *) exit 2 ;; esac
 target_dir=$1
 endpoint=$2
 seed=$3
 cycles=$4
 scenario=${5:-normal}
 case "$scenario" in normal|recovery) ;; *) exit 2 ;; esac
+gate_status=${6:-0}
+case "$gate_status" in 0|1) ;; *) exit 2 ;; esac
 case "$target_dir" in /tmp/fprime-gds.*) ;; *) exit 2 ;; esac
 suffix=${target_dir#/tmp/fprime-gds.}
 case "$suffix" in ''|*[!a-zA-Z0-9]*) exit 2 ;; esac
@@ -29,6 +31,7 @@ for file in flight.csv flight.log flight.err advisor.log advisor.err link.csv sl
     : > "$file"
 done
 flight_options=" --cycles $cycles --m4-seed $seed$gds"
+if [ "$gate_status" -eq 1 ]; then flight_options="$flight_options --gate-status"; fi
 backoff=1
 if [ "$cycles" -eq 0 ] && [ -n "$gds" ]; then
     # Give the ground telemetry rate group time to publish FDIR before SLM restarts the advisor.
