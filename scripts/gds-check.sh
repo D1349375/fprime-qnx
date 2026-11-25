@@ -8,16 +8,18 @@ source "$root/scripts/qnx-vm.sh"
 project=$root/FprimeQnxReference
 ui=0
 rounds=0
+scene=normal
 case "${1:-}" in
     --ui) ui=1; shift ;;
+    --gate-explanation) scene=recovery; shift ;;
     --timing)
         [[ "${2:-}" =~ ^[1-9][0-9]*$ ]] || { echo 'Expected a positive timing round count' >&2; exit 2; }
         rounds=$2
         shift 2
         ;;
-    --help) echo 'Usage: scripts/gds-check.sh [--ui]'; exit 0 ;;
+    --help) echo 'Usage: scripts/gds-check.sh [--ui | --gate-explanation | --timing ROUNDS]'; exit 0 ;;
 esac
-[[ $# -eq 0 ]] || { echo 'Usage: scripts/gds-check.sh [--ui]' >&2; exit 2; }
+[[ $# -eq 0 ]] || { echo 'Usage: scripts/gds-check.sh [--ui | --gate-explanation | --timing ROUNDS]' >&2; exit 2; }
 
 : "${QNX_TARGET:?Source the QNX SDP environment first}"
 sdk=$QNX_TARGET/x86_64
@@ -177,7 +179,7 @@ scp -q "${ssh_opts[@]}" "$sdk/usr/lib/libexpat.so.2" "$sdk/lib/libsecpol.so.1" "
     "root@$guest:$target_dir/slm-libs/"
 seed=${GDS_SEED:-42}
 [[ "$seed" =~ ^[1-9][0-9]*$ ]] || fail 'invalid GDS_SEED'
-printf 'seed=%s\n' "$seed" >"$run/scenario.txt"
+printf 'seed=%s\nscenario=%s\n' "$seed" "$scene" >"$run/scenario.txt"
 
 if (( rounds )); then
     printf 'pair\tgds\tmissing\tlate\tinvalid\n' >"$run/timing.tsv"
@@ -219,7 +221,7 @@ wait_log "$run/capture/stdout.log" '^GDS capture ready$'
 events=$run/capture/event.log
 channels=$run/capture/channel.log
 ssh "${ssh_opts[@]}" "root@$guest" \
-    "sh '$target_dir/run-gds-target.sh' '$target_dir' '$host_ip:$port' '$seed' 0" \
+    "sh '$target_dir/run-gds-target.sh' '$target_dir' '$host_ip:$port' '$seed' 0 '$scene'" \
     </dev/null >"$run/target-ssh.log" 2>&1 &
 target_pid=$!
 
@@ -246,6 +248,12 @@ send_noop() {
 send_noop command
 wait_log "$events" '\.cmdDisp\.NoOpReceived,'
 wait_log "$events" '\.cmdDisp\.OpCodeCompleted,'
+
+if [[ "$scene" == recovery ]]; then
+    wait_log "$events" '\.ground\.GateDecision,.*Gate R[0-9]_[A-Z_]+ REJECTED\. [[:alpha:]]'
+    wait_log "$events" '\.ground\.GateDecision,.*Gate APPROVED APPROVED\. Independent checks permit the sensor exclusion'
+    printf 'PASS GDS shows Gate approval and rejection reasons\n'
+fi
 
 if (( ui )); then
     printf 'GDS at http://localhost:%s. Open Events, then press Enter here to stop the advisor.\n' "${GDS_GUI_PORT:-5000}"

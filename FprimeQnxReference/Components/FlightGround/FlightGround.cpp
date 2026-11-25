@@ -11,12 +11,42 @@
 namespace M2 {
 namespace {
 
-bool isGateDecision(const char* gate) {
-    constexpr const char* rules[] = {
-        "APPROVED", "R1_WHITELIST", "R3_PERSISTENCE", "R4_RATE", "R5_GEOMETRY", "R6_CONSISTENCY", "R8_ISOLATED",
+struct RuleExplanation {
+    const char* code;
+    const char* reason;
+};
+
+const char* gateReason(const char* code) {
+    constexpr RuleExplanation explanations[] = {
+        {"APPROVED", "Independent checks permit the sensor exclusion"},
+        {"R1_WHITELIST", "The proposed action or channel is outside the allowlist"},
+        {"R3_PERSISTENCE", "The proposal needs more consecutive confirmations"},
+        {"R4_RATE", "The action has reached its rate limit"},
+        {"R5_GEOMETRY", "The remaining sensors cannot support a valid estimate"},
+        {"R6_CONSISTENCY", "Independent sensor checks did not confirm the fault"},
+        {"R8_ISOLATED", "The advisor is temporarily isolated"},
     };
-    return std::any_of(std::begin(rules), std::end(rules),
-                       [gate](const char* rule) { return std::strcmp(rule, gate) == 0; });
+    const auto match = std::find_if(std::begin(explanations), std::end(explanations),
+                                    [code](const RuleExplanation& explanation) {
+                                        return std::strcmp(explanation.code, code) == 0;
+                                    });
+    return match == std::end(explanations) ? nullptr : match->reason;
+}
+
+const char* linkReason(const char* code) {
+    constexpr RuleExplanation explanations[] = {
+        {"R2_DUPLICATE", "This snapshot already has a result"},
+        {"R2_FORMAT", "The message does not match the advisor protocol"},
+        {"R2_SESSION", "The result belongs to an inactive advisor session"},
+        {"R2_STALE", "The result has expired"},
+        {"R2_UNISSUED", "FlightSW did not issue this snapshot for the session"},
+    };
+    for (const auto& explanation : explanations) {
+        if (std::strcmp(explanation.code, code) == 0) {
+            return explanation.reason;
+        }
+    }
+    return "The result failed advisor protocol validation";
 }
 
 }  // namespace
@@ -49,10 +79,14 @@ void FlightGround::observe(const CycleRecord& row) {
     m_fdir = row.fdir;
     m_session = session;
 
-    if (std::strcmp(m_lastGate, row.gate) != 0 && isGateDecision(row.gate)) {
-        const char* verdict = std::strcmp(row.gate, "APPROVED") == 0 ? "APPROVED" : "REJECTED";
-        log_ACTIVITY_LO_GateDecision(Fw::LogStringArg(row.gate), Fw::LogStringArg(verdict));
-        m_lastGate = row.gate;
+    if (std::strcmp(m_lastGate, row.gate) != 0) {
+        const auto* reason = gateReason(row.gate);
+        if (reason != nullptr) {
+            const char* verdict = std::strcmp(row.gate, "APPROVED") == 0 ? "APPROVED" : "REJECTED";
+            log_ACTIVITY_LO_GateDecision(Fw::LogStringArg(row.gate), Fw::LogStringArg(verdict),
+                                         Fw::LogStringArg(reason));
+            m_lastGate = row.gate;
+        }
     }
 
     if (row.output.valid && row.truth.valid) {
@@ -68,7 +102,7 @@ void FlightGround::observeLink(const char* event) {
         m_lastRejection = "";
         log_WARNING_LO_AdviceRejected_ThrottleClear();
     } else if (std::strncmp(event, "R2_", 3) == 0 && std::strcmp(event, m_lastRejection) != 0) {
-        log_WARNING_LO_AdviceRejected(Fw::LogStringArg(event));
+        log_WARNING_LO_AdviceRejected(Fw::LogStringArg(event), Fw::LogStringArg(linkReason(event)));
         m_lastRejection = event;
     }
 }

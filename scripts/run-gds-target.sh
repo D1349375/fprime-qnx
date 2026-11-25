@@ -1,12 +1,14 @@
 #!/bin/sh
-# Run a staged normal scenario under SLM inside the QNX test guest.
+# Run a staged GDS scenario under SLM inside the QNX test guest.
 set -eu
 
-[ "$#" -eq 4 ] || exit 2
+[ "$#" -eq 4 ] || [ "$#" -eq 5 ] || exit 2
 target_dir=$1
 endpoint=$2
 seed=$3
 cycles=$4
+scenario=${5:-normal}
+case "$scenario" in normal|recovery) ;; *) exit 2 ;; esac
 case "$target_dir" in /tmp/fprime-gds.*) ;; *) exit 2 ;; esac
 suffix=${target_dir#/tmp/fprime-gds.}
 case "$suffix" in ''|*[!a-zA-Z0-9]*) exit 2 ;; esac
@@ -32,7 +34,7 @@ if [ "$cycles" -eq 0 ] && [ -n "$gds" ]; then
     # Give the ground telemetry rate group time to publish FDIR before SLM restarts the advisor.
     backoff=3
 fi
-sed -e "s|@DIR@|$target_dir|g" -e 's/@SCENARIO@/normal/g' -e 's/@REPAIR@/restart/g' \
+sed -e "s|@DIR@|$target_dir|g" -e "s/@SCENARIO@/$scenario/g" -e 's/@REPAIR@/restart/g' \
     -e "s/backoff=\"1\"/backoff=\"$backoff\"/" \
     -e "s|@FLIGHT_OPTIONS@|$flight_options|g" -e 's|@ADVISOR_OPTIONS@||g' m3-slm.xml.in > gds-slm.xml
 ulimit -c 0 || true
