@@ -10,6 +10,7 @@
 #include <functional>
 #include <pthread.h>
 #include <system_error>
+#include <sys/neutrino.h>
 #include <thread>
 #include <unistd.h>
 
@@ -340,8 +341,17 @@ int main(int argc, char** argv) {
     M2::Options options;
     if (!M2::parseOptions(argc, argv, true, options) ||
         (options.scenario == M2::Scenario::Transport && options.transport != M2::TransportKind::Qnx)) {
-        std::fprintf(stderr, "Usage: FlightSW [--transport udp|qnx] [--port N] [--cycles N] [--log PATH] [--m3 SCENARIO] [--link-log PATH] [--m4-seed N] [--drift-cutoff SCORE] [--gds HOST:PORT] [--gate-status]\n");
+        std::fprintf(stderr, "Usage: FlightSW [--transport udp|qnx] [--port N] [--cycles N] [--log PATH] [--m3 SCENARIO] [--link-log PATH] [--m4-seed N] [--drift-cutoff SCORE] [--gds HOST:PORT] [--gate-status] [--check-cpu0]\n");
         return 2;
+    }
+
+    if (options.checkCpu0) {
+        unsigned runmask = 0;
+        if (ThreadCtl(_NTO_TCTL_RUNMASK_GET_AND_SET, &runmask) != 0 || runmask != 1 || SchedGetCpuNum() != 0) {
+            std::fputs("Q3 requires FlightSW to be pinned to CPU 0\n", stderr);
+            return 1;
+        }
+        std::puts("Q3_FLIGHT cpu=0 runmask=1");
     }
 
     const bool gds = options.gdsPort != 0;

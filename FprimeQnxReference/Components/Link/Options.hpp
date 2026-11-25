@@ -10,6 +10,8 @@
 
 namespace M2 {
 
+enum class CpuLoad { None, Unbudgeted, Sporadic };
+
 struct Options {
     TransportKind transport = TransportKind::Udp;
     std::uint16_t port = DefaultPort;
@@ -26,6 +28,8 @@ struct Options {
     std::string gdsHost;
     std::uint16_t gdsPort = 0;
     bool gateStatus = false;
+    bool checkCpu0 = false;
+    CpuLoad cpuLoad = CpuLoad::None;
 };
 
 inline bool readUnsigned(const char* text, std::uint64_t& value) {
@@ -54,6 +58,10 @@ inline bool parseOptions(int argc, char** argv, bool flight, Options& options) {
         const char* key = argv[i];
         if (flight && std::strcmp(key, "--gate-status") == 0) {
             options.gateStatus = true;
+            continue;
+        }
+        if (flight && std::strcmp(key, "--check-cpu0") == 0) {
+            options.checkCpu0 = true;
             continue;
         }
         if (++i == argc) {
@@ -94,6 +102,14 @@ inline bool parseOptions(int argc, char** argv, bool flight, Options& options) {
         } else if (!flight && std::strcmp(key, "--address-space-mib") == 0 &&
                    readUnsigned(value, number) && number > 0) {
             options.addressSpaceMiB = number;
+        } else if (!flight && std::strcmp(key, "--cpu-load") == 0) {
+            if (std::strcmp(value, "sporadic") == 0) {
+                options.cpuLoad = CpuLoad::Sporadic;
+            } else if (std::strcmp(value, "unbudgeted") == 0) {
+                options.cpuLoad = CpuLoad::Unbudgeted;
+            } else {
+                return false;
+            }
         } else if (flight && std::strcmp(key, "--link-log") == 0 && *value != '\0') {
             options.linkLog = value;
         } else if (flight && std::strcmp(key, "--cycles") == 0 && readUnsigned(value, number)) {
@@ -103,6 +119,10 @@ inline bool parseOptions(int argc, char** argv, bool flight, Options& options) {
         } else {
             return false;
         }
+    }
+    if ((options.checkCpu0 || options.cpuLoad != CpuLoad::None) &&
+        (options.scenario != Scenario::Stall || options.transport != TransportKind::Qnx)) {
+        return false;
     }
     if (!flight && ((options.scenario == Scenario::Crash) != (options.crashMarker != nullptr))) {
         return false;

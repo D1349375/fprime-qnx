@@ -11,6 +11,7 @@
 
 #include "Components/Link/Options.hpp"
 #include "Components/Link/Transport.hpp"
+#include "MlDeployment/SporadicExercise.hpp"
 #include "MlDeployment/Top/AdvisorTopologyAc.hpp"
 #include "Os/Os.hpp"
 
@@ -125,7 +126,7 @@ int main(int argc, char** argv) {
     Os::init();
     M2::Options options;
     if (!M2::parseOptions(argc, argv, false, options)) {
-        std::fputs("Usage: MlAdvisor [--transport udp|qnx] [--port N] [--m3 SCENARIO] [--model PATH|--drift-model PATH] [--address-space-mib MiB]\n"
+        std::fputs("Usage: MlAdvisor [--transport udp|qnx] [--port N] [--m3 SCENARIO] [--model PATH|--drift-model PATH] [--address-space-mib MiB] [--cpu-load sporadic|unbudgeted]\n"
                    "The crash scenario requires a run-specific --crash-marker PATH.\n", stderr);
         return 2;
     }
@@ -222,6 +223,10 @@ int main(int argc, char** argv) {
             if (options.scenario == M2::Scenario::Stall && snapshot.cycle >= M2::InjectionCycle &&
                 snapshot.cycle < M2::InjectionCycle + 30) {
                 event(stalled ? "HEARTBEAT" : "STALL_BEGIN", pid, snapshot.session, snapshot.cycle);
+                if (!stalled && options.cpuLoad != M2::CpuLoad::None &&
+                    !M2::exerciseScheduling(options.cpuLoad == M2::CpuLoad::Sporadic)) {
+                    return 1;
+                }
                 stalled = true;
                 session = snapshot.session;
                 lastCycle = snapshot.cycle;

@@ -8,12 +8,14 @@ project="$root/FprimeQnxReference"
 rounds="${1:-10}"
 mode=default
 if [[ "$rounds" == --help && $# == 1 ]]; then
-    echo 'Usage: scripts/m3-check.sh [rounds-per-scenario | --address-space] (default: 10)'
+    echo 'Usage: scripts/m3-check.sh [rounds-per-scenario | --address-space | --q3] (default: 10)'
     exit 0
 fi
-if [[ "$rounds" == --address-space && $# == 1 ]]; then
-    mode=address-space
-    rounds=1
+if [[ $# == 1 ]]; then
+    case "$rounds" in
+        --address-space) mode=address-space; rounds=1 ;;
+        --q3) mode=q3; rounds=1 ;;
+    esac
 fi
 [[ $# -le 1 && "$rounds" =~ ^[1-9][0-9]*$ ]] || { echo 'Expected a positive round count' >&2; exit 2; }
 : "${QNX_TARGET:?Source the QNX SDP environment first}"
@@ -117,22 +119,26 @@ for ((n = 1; n <= rounds; ++n)); do
     if (( n % 2 == 0 )); then
         groups=(normal q2 q1 stall gate geometry transport recovery)
     fi
-    if [[ "$mode" == address-space ]]; then
-        groups=(q1)
-    fi
+    case "$mode" in
+        address-space) groups=(q1) ;;
+        q3) groups=(q3-sporadic q3-unbudgeted) ;;
+    esac
     for group in "${groups[@]}"; do
         scenario="$group"
+        verdict_group="$group"
+        runtime_case="$mode"
         repair=restart
         fault_exit=SIGKILL
         if [[ "$mode" == address-space ]]; then fault_exit=RLIMIT_AS; fi
         case "$group" in
             q1) scenario=crash ;;
             q2) scenario=crash; repair=none ;;
+            q3-*) scenario=stall; verdict_group=stall; runtime_case="$group" ;;
         esac
         run_id="$(printf '%03d-%s' "$n" "$group")"
         round="$run/$run_id"
         mkdir "$round"
-        printf '%s\n' "run_id=$run_id" "group=$group" "scenario=$scenario" "repair=$repair" \
+        printf '%s\n' "run_id=$run_id" "group=$verdict_group" "scenario=$scenario" "repair=$repair" "runtime_case=$runtime_case" \
             'cycles=230' 'period_ns=20000000' 'deadline_ns=20000000' 'freshness_ns=250000000' \
             'fallback_limit_ns=300000000' 'q1_rejoin_limit_ns=1800000000' 'stall_rejoin_limit_ns=900000000' \
             'transport_rejoin_limit_ns=900000000' 'min_warmup_cycles=40' 'injection_cycle=55' \
@@ -141,7 +147,7 @@ for ((n = 1; n <= rounds; ++n)); do
             'exit_observer=procmgr' >"$round/config.txt"
         rc=0
         timeout -k 5s 28s ssh "${ssh_opts[@]}" "$target" \
-            "M3_RUNTIME_CASE=$mode sh '$target_dir/run-m3-target.sh' '$target_dir' '$scenario' '$repair'" >"$round/target.log" 2>&1 || rc=$?
+            "M3_RUNTIME_CASE=$runtime_case sh '$target_dir/run-m3-target.sh' '$target_dir' '$scenario' '$repair'" >"$round/target.log" 2>&1 || rc=$?
         printf '%s\n' "$rc" >"$round/target-status.txt"
         for name in "${files[@]}"; do
             scp -q "${ssh_opts[@]}" "$target:$target_dir/$name" "$round/$name" 2>>"$round/target.log" || true
@@ -154,7 +160,7 @@ for ((n = 1; n <= rounds; ++n)); do
             if [[ "$assessment_status" -eq 1 ]]; then
                 verdict=FAIL
             fi
-            result=1
+            if [[ "$group" != q3-unbudgeted || "$verdict" != FAIL ]]; then result=1; fi
         fi
         printf '%s\t%s\t%s\t%s\n' "$run_id" "$group" "$rc" "$verdict" >>"$run/results.tsv"
         if [[ "$mode" == address-space ]]; then
@@ -165,8 +171,34 @@ for ((n = 1; n <= rounds; ++n)); do
                 result=1
             fi
         fi
+        if [[ "$mode" == q3 ]]; then
+            load="${group#q3-}"
+            expected_low=0
+            if [[ "$load" == sporadic ]]; then expected_low=1; fi
+            if [[ "$rc" == 0 ]] && grep -Fxq 'Q3_FLIGHT cpu=0 runmask=1' "$round/flight.log" &&
+                grep -Eq "^Q3_SCHEDULER mode=$load cpu0=1 high=1 low=$expected_low cpu_time_ns=[1-9][0-9]*$" "$round/advisor.log"; then
+                printf 'PASS Q3 scheduler and affinity evidence for %s\n' "$load"
+            else
+                printf 'FAIL Q3 scheduler or affinity evidence for %s\n' "$load" >&2
+                result=1
+            fi
+            if [[ "$load" == unbudgeted ]]; then
+                if [[ "$verdict" != FAIL ]] ||
+                    ! grep -Eq '^misses=[1-9][0-9]*/' "$round/summary.txt"; then
+                    printf 'FAIL Q3 unbudgeted control did not show a deadline miss\n' >&2
+                    result=1
+                fi
+            fi
+        fi
     done
-    if [[ "$mode" == address-space ]]; then break; fi
+    if [[ "$mode" == q3 ]]; then
+        if ! sed 's/--cpu-load unbudgeted/--cpu-load sporadic/' "$run/001-q3-unbudgeted/m3-slm.xml" |
+            cmp -s "$run/001-q3-sporadic/m3-slm.xml" -; then
+            printf 'FAIL Q3 configuration differs beyond the advisor scheduling mode\n' >&2
+            result=1
+        fi
+    fi
+    if [[ "$mode" != default ]]; then break; fi
     # The only XML change within a pair must be the advisor repair policy.
     q1="$run/$(printf '%03d-q1' "$n")/m3-slm.xml"
     q2="$run/$(printf '%03d-q2' "$n")/m3-slm.xml"
