@@ -178,6 +178,16 @@ read -r -p 'M4 paired run directory: ' m4_run_dir
 
 To recompute an individual case, use `check-m3.py` on that case directory and run `assess-adcs.py` with the run's offline `replay` directory and the case directory. Use the summary for the restart behavior under the [reviewed publication scope](limitations.md). Keep the detailed report, both arm comparisons, original per-case timing verdicts and trace captures on the test host. Apply the same rule to browser and terminal recordings that contain those outputs. [Paired behavior evidence](evidence-index.md#trained-advisor-recovery)
 
+## M4 advisor-disabled baseline (Q0)
+
+Q0 estimates what running the advisor costs the flight side. Each block runs Q0 and Q1 on the same seed in one guest, alternating their order. Q0 uses the Q1 crash workload with the FDIR-only entry, so SLM starts FlightSW alone with the same arguments and the advisor never runs. Use the same CPU profile launcher as for the paired check.
+
+```bash
+PATH="$TMPDIR/qemu-bin:$PATH" scripts/m4-check.sh "$SYS" adcs-q0 10
+```
+
+`blocks.tsv` records each block's order and checks that the two rendered SLM files differ only by the advisor's model argument. Each Q0 case passes the FDIR-only recovery checks under the same release and deadline as Q1. Compare the per-case `timing.txt` within each block. [D79](../zh/決策與變更紀錄.md#d79--pre-register-the-q0-advisor-cost-round-2026-11-26) fixes the metrics and verdict labels. Keep the timing comparison on the test host, as for the paired check.
+
 ## SDK-free host checks
 
 ```bash
