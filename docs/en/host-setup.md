@@ -22,7 +22,7 @@ ip -brief address show virbr0
 
 ## QNX SDK and F Prime tools
 
-Install QNX SDP 8.0.6 with the x86-64 target libraries through QNX Software Center. The install must provide `qcc`, `q++` and `mkqnximage`. The following example uses `$HOME/qnx800` for that installation. Run the F Prime commands from the repository root after initializing the submodules. [QNX Software Center and SDP](https://www.qnx.com/developers/docs/8.0/com.qnx.doc.quickstart/topic/about.html)
+Install QNX SDP 8.0.6 with the x86-64 target libraries through QNX Software Center. The install must provide `qcc`, `q++` and `mkqnximage`. The following example uses `$HOME/qnx800` for that installation. Run the F Prime commands from the repository root after initializing the submodules. [QNX Software Center and SDP](https://www.qnx.com/developers/docs/8.0/com.qnx.doc.qnxsdp.quickstart/topic/about.html)
 
 ```bash
 source "$HOME/qnx800/qnxsdp-env.sh"
