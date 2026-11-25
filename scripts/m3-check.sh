@@ -6,9 +6,14 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$root/scripts/qnx-vm.sh"
 project="$root/FprimeQnxReference"
 rounds="${1:-10}"
+mode=default
 if [[ "$rounds" == --help && $# == 1 ]]; then
-    echo 'Usage: scripts/m3-check.sh [rounds-per-scenario] (default: 10, use 1 for a pilot)'
+    echo 'Usage: scripts/m3-check.sh [rounds-per-scenario | --address-space] (default: 10)'
     exit 0
+fi
+if [[ "$rounds" == --address-space && $# == 1 ]]; then
+    mode=address-space
+    rounds=1
 fi
 [[ $# -le 1 && "$rounds" =~ ^[1-9][0-9]*$ ]] || { echo 'Expected a positive round count' >&2; exit 2; }
 : "${QNX_TARGET:?Source the QNX SDP environment first}"
@@ -112,9 +117,14 @@ for ((n = 1; n <= rounds; ++n)); do
     if (( n % 2 == 0 )); then
         groups=(normal q2 q1 stall gate geometry transport recovery)
     fi
+    if [[ "$mode" == address-space ]]; then
+        groups=(q1)
+    fi
     for group in "${groups[@]}"; do
         scenario="$group"
         repair=restart
+        fault_exit=SIGKILL
+        if [[ "$mode" == address-space ]]; then fault_exit=RLIMIT_AS; fi
         case "$group" in
             q1) scenario=crash ;;
             q2) scenario=crash; repair=none ;;
@@ -127,11 +137,11 @@ for ((n = 1; n <= rounds; ++n)); do
             'fallback_limit_ns=300000000' 'q1_rejoin_limit_ns=1800000000' 'stall_rejoin_limit_ns=900000000' \
             'transport_rejoin_limit_ns=900000000' 'min_warmup_cycles=40' 'injection_cycle=55' \
             'transport_pause_ns=400000000' 'angle_limit_deg=2' 'stable_cycles=20' \
-            'seed=none' 'workload=fixture-only' 'crash_signal=SIGKILL' 'slm_rate=2/min' 'slm_backoff_s=1' \
+            'seed=none' 'workload=fixture-only' "crash_signal=$fault_exit" 'slm_rate=2/min' 'slm_backoff_s=1' \
             'exit_observer=procmgr' >"$round/config.txt"
         rc=0
         timeout -k 5s 28s ssh "${ssh_opts[@]}" "$target" \
-            "sh '$target_dir/run-m3-target.sh' '$target_dir' '$scenario' '$repair'" >"$round/target.log" 2>&1 || rc=$?
+            "M3_RUNTIME_CASE=$mode sh '$target_dir/run-m3-target.sh' '$target_dir' '$scenario' '$repair'" >"$round/target.log" 2>&1 || rc=$?
         printf '%s\n' "$rc" >"$round/target-status.txt"
         for name in "${files[@]}"; do
             scp -q "${ssh_opts[@]}" "$target:$target_dir/$name" "$round/$name" 2>>"$round/target.log" || true
@@ -147,7 +157,16 @@ for ((n = 1; n <= rounds; ++n)); do
             result=1
         fi
         printf '%s\t%s\t%s\t%s\n' "$run_id" "$group" "$rc" "$verdict" >>"$run/results.tsv"
+        if [[ "$mode" == address-space ]]; then
+            if [[ $(grep -c '^EVENT ADDRESS_SPACE_DENIED ' "$round/advisor.log") == 1 ]]; then
+                printf 'PASS QNX denied the bounded mapping under RLIMIT_AS\n'
+            else
+                printf 'FAIL expected one RLIMIT_AS allocation denial\n' >&2
+                result=1
+            fi
+        fi
     done
+    if [[ "$mode" == address-space ]]; then break; fi
     # The only XML change within a pair must be the advisor repair policy.
     q1="$run/$(printf '%03d-q1' "$n")/m3-slm.xml"
     q2="$run/$(printf '%03d-q2' "$n")/m3-slm.xml"

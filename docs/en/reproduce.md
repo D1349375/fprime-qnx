@@ -90,6 +90,8 @@ read -r -p 'M3 case directory: ' case_dir
 python3 -B FprimeQnxReference/test/int/check-m3.py "$case_dir"
 ```
 
+Run `scripts/m3-check.sh --address-space` for the QNX address-space fault. MlAdvisor accepts `--address-space-mib MiB` and sets the soft and hard resource limits before loading the model. The smoke test expects QNX to deny a bounded mapping with ENOMEM, then uses the regular Q1 checker for fallback, SLM replacement and fresh-session adoption.
+
 ## E6 and M4 inference setup
 
 Install the Linux Armadillo, OpenBLAS, cereal and ensmallen development headers. Put Linux `apk-tools` 3.x on `PATH` using the [QNX package codelab](https://qnx.github.io/codelabs/apk-based-cross-compile/index.html). The host and target use mlpack 4.7.0. The following commands prepare new dependency directories outside the repository.

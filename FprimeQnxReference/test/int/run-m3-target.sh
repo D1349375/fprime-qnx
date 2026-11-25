@@ -37,6 +37,11 @@ if [ "$#" -ge 5 ]; then
     fi
 fi
 
+case "${M3_RUNTIME_CASE:-default}:$scenario:$repair" in
+    default:*) ;;
+    address-space:crash:restart) advisor_options="$advisor_options --address-space-mib 128" ;;
+    *) exit 2 ;;
+esac
 if [ "$scenario" = drift ] && [ "$#" -ne 6 ]; then exit 2; fi
 
 control="/dev/slm-fprime-m3-$suffix"

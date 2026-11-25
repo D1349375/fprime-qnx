@@ -22,6 +22,7 @@ struct Options {
     const char* model = nullptr;
     bool driftModel = false;
     const char* crashMarker = nullptr;
+    std::uint64_t addressSpaceMiB = 0;
     std::string gdsHost;
     std::uint16_t gdsPort = 0;
     bool gateStatus = false;
@@ -90,6 +91,9 @@ inline bool parseOptions(int argc, char** argv, bool flight, Options& options) {
             options.driftModel = std::strcmp(key, "--drift-model") == 0;
         } else if (!flight && std::strcmp(key, "--crash-marker") == 0 && *value != '\0') {
             options.crashMarker = value;
+        } else if (!flight && std::strcmp(key, "--address-space-mib") == 0 &&
+                   readUnsigned(value, number) && number > 0) {
+            options.addressSpaceMiB = number;
         } else if (flight && std::strcmp(key, "--link-log") == 0 && *value != '\0') {
             options.linkLog = value;
         } else if (flight && std::strcmp(key, "--cycles") == 0 && readUnsigned(value, number)) {
