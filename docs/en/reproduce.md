@@ -116,6 +116,25 @@ scripts/m4-check.sh "$SYS" opssat
 
 The ADCS pilot uses validation seeds. The full ADCS workload uses held-out seeds and checks the FDIR control, the learned advisor, and advisor recovery. Inspect the output per scenario and match the first accepted post-restart result to offline replay. The OPS-SAT exercise uses a separate model and the published test split. For an offline run, pass a third argument to `opssat` pointing to a directory with `record.json` and the pinned Zenodo files consumed by the script. [Dataset](https://doi.org/10.5281/zenodo.15108715)
 
+## M4 slow sensor drift comparison
+
+The host mode freezes the cutoffs and checks the native FFN replay. The target mode repeats those checks before starting a fresh QNX guest.
+
+```bash
+scripts/m4-check.sh "$SYS" adcs-drift-host
+scripts/m4-check.sh "$SYS" adcs-drift
+```
+
+The fixture adds a ramp to channel 0 with a slope fixed by each seed, starting at the same injection cycle as the fixed-bias case. The FFN and the conventional leave-one-out residual both use that channel hypothesis and causal sensor snapshots. Each cutoff is fixed above the maximum score on the healthy calibration seeds, with zero observed false alerts. Fit seeds are 1101–1116, healthy calibration seeds are 2101–2116 and held-out seeds are 3101–3108. The runner alternates the FDIR-only and learned-advisor order for the held-out healthy and drift cases.
+
+A warning can precede the independent confirmation needed for an exclusion proposal. Both arms use the existing RecoveryGate for action, geometry and consistency checks. While FlightSW's own residual warns on a channel that is not yet excluded, FlightSW withholds the fused estimate. An advisor result cannot trigger this. Offline replay also compares warning snapshots on identical input.
+
+Recompute the per-seed report with the script below. It records the first valid warning and its source snapshot, the acting gate, channel isolation, simulated sun-vector error, stable recovery and the original run verdict. [D62](../zh/決策與變更紀錄.md#d62--calibrate-and-pair-the-slow-drift-detectors-2026-11-24) and [D75](../zh/決策與變更紀錄.md#d75--integrate-e7-guard-the-drift-estimate-and-pre-register-the-acceptance-round-2026-11-25) give the limits of the comparison.
+
+```bash
+"$M4_PYTHON" FprimeQnxReference/test/m4/assess-drift.py --pairs RUN_DIR
+```
+
 ## M4 paired repair-policy check
 
 Start with one pair to verify the build, guest, trained advisor warm-up and log transfer. Then run the ten-pair acceptance cohort from the same checkout.
