@@ -11,6 +11,8 @@ add_fprime_subdirectory("${CMAKE_CURRENT_LIST_DIR}/Svc/QnxProcessMonitor/")
 add_fprime_subdirectory("${CMAKE_CURRENT_LIST_DIR}/Drv/QnxMsgDriver/")
 
 if (FPRIME_PLATFORM STREQUAL "QNX")
+    add_fprime_subdirectory("${CMAKE_CURRENT_LIST_DIR}/Os/Qnx/")
+
     # GoogleTest is built separately and does not inherit PlatformQnx's POSIX feature macro.
     foreach (QNX_GTEST_TARGET IN ITEMS gtest gtest_main gmock gmock_main)
         if (TARGET "${QNX_GTEST_TARGET}")

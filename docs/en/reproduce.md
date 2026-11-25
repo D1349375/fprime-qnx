@@ -40,7 +40,7 @@ Expect a fresh clone, x86-64 cross-build, fresh QNX image and a successful GDS r
 scripts/osal-check.sh
 ```
 
-The script stages the pinned F Prime sources with the [test portability patch](../../adoption/osal-test-portability.patch), cross-builds the selected OSAL executables and runs each in a new QNX guest. Inspect `summary.tsv`, `target-uname.txt` and the per-suite logs in the printed directory. The expected skip is the test that needs `/dev/full`. The ThreadSanitizer suite and unsupported features have separate entries. [OSAL results](results.md#osal-v1)
+The script stages the pinned F Prime sources with the [test portability patch](../../adoption/osal-test-portability.patch), cross-builds the selected OSAL executables and runs each in a new QNX guest. Inspect `summary.tsv`, `target-uname.txt` and the per-suite logs in the printed directory. The native suite checks CPU count, cumulative per-CPU ticks and physical memory through the F Prime OSAL API. The expected skip is the test that needs `/dev/full`. The ThreadSanitizer suite and unsupported features have separate entries. [OSAL results](results.md#osal-v1)
 
 ## M2 process and transport checks
 

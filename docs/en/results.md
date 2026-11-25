@@ -13,7 +13,7 @@ Target checks used QNX SDP 8.0.6 with `qcc` GCC 12.2.0 on QNX 8.0.0 x86-64 under
 
 ## OSAL (V1)
 
-The pinned F Prime v4.4.2 OSAL sources ran with the project's [test portability patch](../../adoption/osal-test-portability.patch) on the QNX target. The test executables reported **258 passed, 0 failed, 1 skipped** across 17 suites. Early V1 used the stock test assumptions and exposed portability failures. The suite table reports the later patched run. [Portability change](https://github.com/D1349375/fprime-qnx/pull/5) · [OSAL rerun](reproduce.md#osal-v1)
+The pinned F Prime v4.4.2 OSAL sources ran with the project's [test portability patch](../../adoption/osal-test-portability.patch) on the QNX target. The test executables reported **258 passed, 0 failed, 1 skipped** across 17 suites. Early V1 used the stock test assumptions and exposed portability failures. The table includes the later patched run and the three native CPU and memory checks added in I-85. [Portability change](https://github.com/D1349375/fprime-qnx/pull/5) · [OSAL rerun](reproduce.md#osal-v1)
 
 | Suite | Passed | Failed | Skipped |
 | --- | ---: | ---: | ---: |
@@ -34,8 +34,9 @@ The pinned F Prime v4.4.2 OSAL sources ran with the project's [test portability 
 | `LocklessPriorityQueueTest` | 31 | 0 | 0 |
 | `StubCpuTest` | 4 | 0 | 0 |
 | `StubMemoryTest` | 3 | 0 | 0 |
+| `QnxSystemResourcesTest` | 3 | 0 | 0 |
 
-`PosixFileErrorHandling.WriteNoSpaceSurfacesError` skipped because the guest lacks `/dev/full`. The ThreadSanitizer queue suite is outside the case totals. Native CPU and memory statistics and Linux-only Task priority and nice behavior are outside the target coverage. The CPU and memory suites verify the selected stubs.
+`PosixFileErrorHandling.WriteNoSpaceSurfacesError` skipped because the guest lacks `/dev/full`. The ThreadSanitizer queue suite is outside the case totals. Linux-only Task priority and nice behavior remain outside the target coverage. The separate stub suites still verify the explicitly selected upstream stubs.
 
 ## Deterministic ADCS
 
