@@ -35,8 +35,8 @@ drift=false
 if [[ "$mode" == adcs-drift || "$mode" == adcs-drift-host ]]; then drift=true; fi
 kernel_trace="${M4_KERNEL_TRACE:-0}"
 case "$mode:$kernel_trace" in
-    *:0|adcs-pair:1|adcs-pilot:on-miss|adcs:on-miss|adcs-pair:on-miss) ;;
-    *) echo 'Use M4_KERNEL_TRACE=1 for adcs-pair, or on-miss for an ADCS mode' >&2; exit 2 ;;
+    *:0|adcs-pair:1|adcs-q0:1|adcs-pilot:on-miss|adcs:on-miss|adcs-pair:on-miss) ;;
+    *) echo 'Use M4_KERNEL_TRACE=1 for adcs-pair or adcs-q0, or on-miss for an ADCS mode' >&2; exit 2 ;;
 esac
 if [[ "$kernel_trace" == on-miss ]]; then
     host_tracefs="$(realpath -e "${M4_HOST_TRACEFS:?Set M4_HOST_TRACEFS to a dedicated tracefs instance}")"

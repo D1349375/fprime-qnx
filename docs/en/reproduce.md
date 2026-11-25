@@ -186,7 +186,7 @@ Q0 estimates what running the advisor costs the flight side. Each block runs Q0 
 PATH="$TMPDIR/qemu-bin:$PATH" scripts/m4-check.sh "$SYS" adcs-q0 10
 ```
 
-`blocks.tsv` records each block's order and checks that the two rendered SLM files differ only by the advisor's model argument. Each Q0 case passes the FDIR-only recovery checks under the same release and deadline as Q1. Compare the per-case `timing.txt` within each block. [D79](../zh/決策與變更紀錄.md#d79--pre-register-the-q0-advisor-cost-round-2026-11-26) fixes the metrics and verdict labels. Keep the timing comparison on the test host, as for the paired check.
+`blocks.tsv` records each block's order and checks that the two rendered SLM files differ only by the advisor's model argument. Each Q0 case passes the FDIR-only recovery checks under the same release and deadline as Q1. Compare the per-case `timing.txt` within each block. [D79](../zh/決策與變更紀錄.md#d79--pre-register-the-q0-advisor-cost-round-2026-11-26) fixes the metrics and verdict labels. Keep the timing comparison on the test host, as for the paired check. Set `M4_KERNEL_TRACE=1` to keep the guest ring of every case; [D80](../zh/決策與變更紀錄.md#d80--pre-register-the-attribution-of-the-q1-lifecycle-transients-2026-11-26) used it to examine the timing transients near advisor start-up and restart.
 
 ## SDK-free host checks
 
