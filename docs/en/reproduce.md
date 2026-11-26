@@ -34,6 +34,18 @@ scripts/clean-rebuild.sh
 
 Expect a fresh clone, x86-64 cross-build, fresh QNX image and a successful GDS round trip. The last line reports `PASS`. Verify the source and SDK in `logs/source.log`, the guest in `logs/image.log` and the GDS probe in `logs/ref-gds.log`. `CdhCore.cmdDisp.CMD_NO_OP` produces `NoOpReceived` and `OpCodeCompleted`. The probe also receives rate group 1 telemetry. If TCP port `50000` is occupied, set `GDS_PORT` to an unused port. If the event listeners need a longer telemetry discovery window, increase `CHECK_SECONDS`. For example, `GDS_PORT=51000 CHECK_SECONDS=90 scripts/clean-rebuild.sh` uses the alternate port and a longer wait. [Ref evidence](results.md#ref-and-adcs-ground-system)
 
+### Ref AArch64 cross-build
+
+```bash
+scripts/import-ref.sh
+cd adoption
+fprime-util generate qnx-aarch64le
+fprime-util build qnx-aarch64le --jobs 2
+file build-artifacts/qnx-aarch64le/Ref/bin/Ref
+```
+
+This was checked at `70db8bb5881dd9e2b616629f715d9ccdd9580cbc`. `file` reports a 64-bit little-endian AArch64 executable with the QNX interpreter `/usr/lib/ldqnx-64.so.2`, and `build-artifacts/qnx-aarch64le/Ref/dict/RefTopologyDictionary.json` contains `CMD_NO_OP`. The build only produces the executable. AArch64 execution needs a bootable AArch64 QNX target. [Limitations](limitations.md)
+
 ## MathComponent tutorial adoption
 
 The project team adopted the F Prime [MathComponent tutorial](https://github.com/fprime-community/fprime-tutorial-math-component/tree/6dbbdc47d48315086c65354a7ea4d2f9352ee760) as a second existing deployment by following [the adoption guide](adopt.md). The import script clones the tutorial at the pinned commit, replaces its F Prime submodule with this project's pinned F Prime and applies the [two-line patch](../../adoption/math-qnx.patch).
