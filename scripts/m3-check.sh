@@ -8,16 +8,22 @@ project="$root/FprimeQnxReference"
 rounds="${1:-10}"
 mode=default
 if [[ "$rounds" == --help && $# == 1 ]]; then
-    echo 'Usage: scripts/m3-check.sh [rounds-per-scenario | --address-space | --q3] (default: 10)'
+    echo 'Usage: scripts/m3-check.sh [rounds-per-scenario | --address-space | --q3 [pairs]] (default: 10 rounds or one Q3 pair)'
     exit 0
 fi
-if [[ $# == 1 ]]; then
-    case "$rounds" in
-        --address-space) mode=address-space; rounds=1 ;;
-        --q3) mode=q3; rounds=1 ;;
-    esac
+case "$rounds" in
+    --address-space) mode=address-space; rounds=1 ;;
+    --q3)
+        mode=q3
+        rounds="${2-1}"
+        shift
+        ;;
+esac
+if ! [[ $# -le 1 && "$rounds" =~ ^[1-9][0-9]*$ ]] ||
+    ! printf -v parsed_rounds '%d' "$rounds" 2>/dev/null || [[ "$parsed_rounds" != "$rounds" ]]; then
+    echo 'Expected a positive round count' >&2
+    exit 2
 fi
-[[ $# -le 1 && "$rounds" =~ ^[1-9][0-9]*$ ]] || { echo 'Expected a positive round count' >&2; exit 2; }
 : "${QNX_TARGET:?Source the QNX SDP environment first}"
 sdk="$QNX_TARGET/x86_64"
 run="$(mktemp -d "${TMPDIR:-/tmp}/fprime-m3.XXXXXXXX")"
@@ -114,15 +120,23 @@ files=(flight.csv flight.log flight.err advisor.log advisor.err link.csv slm.log
 result=0
 printf 'run_id\tgroup\ttarget_exit\tverdict\n' >"$run/results.tsv"
 for ((n = 1; n <= rounds; ++n)); do
-    # Alternate order to avoid putting Q2 systematically later in each block.
-    groups=(normal q1 q2 stall gate geometry transport recovery)
-    if (( n % 2 == 0 )); then
-        groups=(normal q2 q1 stall gate geometry transport recovery)
-    fi
+    # Alternate each pair's order on even rounds.
     case "$mode" in
         address-space) groups=(q1) ;;
-        q3) groups=(q3-sporadic q3-unbudgeted) ;;
+        q3)
+            groups=(q3-sporadic q3-unbudgeted)
+            if (( n % 2 == 0 )); then
+                groups=(q3-unbudgeted q3-sporadic)
+            fi
+            ;;
+        default)
+            groups=(normal q1 q2 stall gate geometry transport recovery)
+            if (( n % 2 == 0 )); then
+                groups=(normal q2 q1 stall gate geometry transport recovery)
+            fi
+            ;;
     esac
+    printf -v pair_id '%03d' "$n"
     for group in "${groups[@]}"; do
         scenario="$group"
         verdict_group="$group"
@@ -135,7 +149,7 @@ for ((n = 1; n <= rounds; ++n)); do
             q2) scenario=crash; repair=none ;;
             q3-*) scenario=stall; verdict_group=stall; runtime_case="$group" ;;
         esac
-        run_id="$(printf '%03d-%s' "$n" "$group")"
+        run_id="$pair_id-$group"
         round="$run/$run_id"
         mkdir "$round"
         printf '%s\n' "run_id=$run_id" "group=$verdict_group" "scenario=$scenario" "repair=$repair" "runtime_case=$runtime_case" \
@@ -192,19 +206,25 @@ for ((n = 1; n <= rounds; ++n)); do
         fi
     done
     if [[ "$mode" == q3 ]]; then
-        if ! sed 's/--cpu-load unbudgeted/--cpu-load sporadic/' "$run/001-q3-unbudgeted/m3-slm.xml" |
-            cmp -s "$run/001-q3-sporadic/m3-slm.xml" -; then
-            printf 'FAIL Q3 configuration differs beyond the advisor scheduling mode\n' >&2
+        sporadic="$run/$pair_id-q3-sporadic/m3-slm.xml"
+        unbudgeted="$run/$pair_id-q3-unbudgeted/m3-slm.xml"
+        if grep -Fq -- ' --cpu-load unbudgeted</SLM:args>' "$unbudgeted" &&
+            sed 's| --cpu-load unbudgeted</SLM:args>| --cpu-load sporadic</SLM:args>|' "$unbudgeted" |
+            cmp -s "$sporadic" -; then
+            printf 'PASS Q3 pair %s SLM scheduling configuration\n' "$pair_id" | tee -a "$run/pairs.txt"
+        else
+            printf 'FAIL Q3 pair %s expected only the advisor scheduling mode to differ\n' "$pair_id" |
+                tee -a "$run/pairs.txt" >&2
             result=1
         fi
-    fi
-    if [[ "$mode" != default ]]; then break; fi
-    # The only XML change within a pair must be the advisor repair policy.
-    q1="$run/$(printf '%03d-q1' "$n")/m3-slm.xml"
-    q2="$run/$(printf '%03d-q2' "$n")/m3-slm.xml"
-    if ! sed 's/backoff="1">none</backoff="1">restart</' "$q2" | cmp -s "$q1" -; then
-        printf 'Pair %d has inconsistent SLM configuration\n' "$n" | tee -a "$run/pairs.txt"
-        result=1
+    elif [[ "$mode" == default ]]; then
+        # The only XML change within a pair must be the advisor repair policy.
+        q1="$run/$pair_id-q1/m3-slm.xml"
+        q2="$run/$pair_id-q2/m3-slm.xml"
+        if ! sed 's/backoff="1">none</backoff="1">restart</' "$q2" | cmp -s "$q1" -; then
+            printf 'Pair %d has inconsistent SLM configuration\n' "$n" | tee -a "$run/pairs.txt"
+            result=1
+        fi
     fi
 done
 printf 'M3 results: %s\n' "$run/results.tsv"
