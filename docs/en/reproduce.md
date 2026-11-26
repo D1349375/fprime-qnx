@@ -34,6 +34,22 @@ scripts/clean-rebuild.sh
 
 Expect a fresh clone, x86-64 cross-build, fresh QNX image and a successful GDS round trip. The last line reports `PASS`. Verify the source and SDK in `logs/source.log`, the guest in `logs/image.log` and the GDS probe in `logs/ref-gds.log`. `CdhCore.cmdDisp.CMD_NO_OP` produces `NoOpReceived` and `OpCodeCompleted`. The probe also receives rate group 1 telemetry. If TCP port `50000` is occupied, set `GDS_PORT` to an unused port. If the event listeners need a longer telemetry discovery window, increase `CHECK_SECONDS`. For example, `GDS_PORT=51000 CHECK_SECONDS=90 scripts/clean-rebuild.sh` uses the alternate port and a longer wait. [Ref evidence](results.md#ref-and-adcs-ground-system)
 
+## MathComponent tutorial adoption
+
+The project team adopted the F Prime [MathComponent tutorial](https://github.com/fprime-community/fprime-tutorial-math-component/tree/6dbbdc47d48315086c65354a7ea4d2f9352ee760) as a second existing deployment by following [the adoption guide](adopt.md). The import script clones the tutorial at the pinned commit, replaces its F Prime submodule with this project's pinned F Prime and applies the [two-line patch](../../adoption/math-qnx.patch).
+
+```bash
+scripts/import-math.sh
+(
+    cd adoption/math-tutorial
+    fprime-util generate qnx-x86_64
+    fprime-util build qnx-x86_64 --jobs 2
+)
+scripts/math-gds-check.sh
+```
+
+The check builds a new QNX guest and starts GDS on the host. It runs `MathDeployment` on the guest and prints one `PASS` line per step. `CMD_NO_OP` produces `NoOpReceived` and `OpCodeCompleted`. `mathSender.DO_MATH 1 ADD 2` produces `OPERATION_PERFORMED`, a result of 3 and the result telemetry. Setting the `mathReceiver` `FACTOR` parameter to 2 produces `FACTOR_UPDATED`, and the next addition returns 6. A division by zero produces `DIVIDE_BY_ZERO`. The receiver is a queued component that rate group 1 services, so each result passes through the `Svc.QnxTimer` tick. A final `SIGTERM` stops the timer and the deployment exits through its teardown. Set `QNX_IMAGE_DIR` and `QNX_SSH_KEY` to reuse a booted guest image. The printed evidence directory holds `verdict.txt`, the decoded `capture/event.log` and `capture/channel.log`, and the target console.
+
 ## OSAL (V1)
 
 ```bash
