@@ -33,6 +33,11 @@ FPRIME_REV="$(git -C "${FPRIME}" rev-parse HEAD)"
 rmdir "${DST}/lib/fprime"
 git clone --quiet --shared --no-checkout -- "${FPRIME}" "${DST}/lib/fprime"
 git -C "${DST}/lib/fprime" -c advice.detachedHead=false checkout --quiet --detach "${FPRIME_REV}"
+# GoogleTest is only needed for the tutorial's unit tests. Reuse the checkout's copy when it is initialized.
+if [ -e "${FPRIME}/googletest/CMakeLists.txt" ]; then
+    git -C "${DST}/lib/fprime" -c protocol.file.allow=always -c "submodule.googletest.url=${FPRIME}/googletest" \
+        submodule update --quiet --init -- googletest
+fi
 
 patch --quiet --forward --no-backup-if-mismatch -d "${DST}" -p1 < "${PATCH}"
 echo "adoption/math-tutorial regenerated from tutorial ${REV} + math-qnx.patch"
