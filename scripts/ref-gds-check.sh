@@ -92,9 +92,6 @@ kill -0 "${GDS_PID}" 2>/dev/null || fail "fprime-gds exited early; see ${RUN_DIR
 log "deploying Ref to the guest"
 ssh "${SSH_OPTS[@]}" "root@${GUEST}" 'slay -f Ref >/dev/null 2>&1; mkdir -p /tmp/fprime-ref'
 scp -q "${SSH_OPTS[@]}" "${BIN}" "root@${GUEST}:/tmp/fprime-ref/Ref" || fail "scp to guest failed"
-# -f: the QNX shell keeps the channel open for its background job, so let ssh go to the background after auth
-ssh -n -f "${SSH_OPTS[@]}" "root@${GUEST}" \
-    "cd /tmp/fprime-ref && nohup ./Ref -a ${HOST_IP} -p ${PORT} > ref.log 2>&1 < /dev/null &"
 
 # 4. Command round trip. With `-g none` the GDS itself writes no Event/Channel logs, so the downlink is observed with
 #    fprime-cli listeners started before the command is sent. Each listener returns on its first matching item, so
@@ -106,23 +103,32 @@ listen() {  # listen <events|channels> <search> <name>
     LISTENER_PIDS+=($!)
 }
 wait_for_telemetry() {
-    local capture deadline=$((SECONDS + LISTEN_SECONDS))
+    local pattern="$1" capture deadline=$((SECONDS + LISTEN_SECONDS))
+    shift
     for capture in "$@"; do
-        until grep -Fq "rateGroup1Comp" "$capture" 2>/dev/null; do
+        until grep -Eq -- "$pattern" "$capture" 2>/dev/null; do
             kill -0 "${GDS_PID}" 2>/dev/null || fail "fprime-gds exited; see ${RUN_DIR}/gds-stdout.log"
-            (( SECONDS < deadline )) || fail "rate group 1 telemetry did not reach ${capture}"
+            (( SECONDS < deadline )) || fail "expected telemetry did not reach ${capture}: ${pattern}"
             sleep 0.2
         done
     done
 }
 
-# A running GDS process may not yet have accepted Ref's TCP connection.
+# Subscribe before Ref starts so the rate group listener can see its initial samples.
 listen channels rateGroup1Comp channel-rategroup1
-wait_for_telemetry "${RUN_DIR}/downlink-channel-rategroup1.txt"
 listen events NoOpReceived event-noop
 listen events OpCodeCompleted event-completed
-# These CLI sessions log all decoded channels even when searching for an event.
-wait_for_telemetry "${RUN_DIR}/cli-event-noop/channel.log" "${RUN_DIR}/cli-event-completed/channel.log"
+
+# -f: the QNX shell keeps the channel open for its background job, so let ssh go to the background after auth
+ssh -n -f "${SSH_OPTS[@]}" "root@${GUEST}" \
+    "cd /tmp/fprime-ref && nohup ./Ref -a ${HOST_IP} -p ${PORT} > ref.log 2>&1 < /dev/null &" ||
+    fail "could not launch Ref over SSH"
+
+wait_for_telemetry 'rateGroup1Comp' "${RUN_DIR}/downlink-channel-rategroup1.txt"
+# A decoded channel record proves each event listener is receiving data.
+# The rate group channels publish on change, so later listeners may never see them.
+wait_for_telemetry ',[[:alnum:]_.]+,[0-9]+,' \
+    "${RUN_DIR}/cli-event-noop/channel.log" "${RUN_DIR}/cli-event-completed/channel.log"
 log "Ref telemetry received by the event listeners"
 log "sending CdhCore.cmdDisp.CMD_NO_OP"
 fprime-cli command-send CdhCore.cmdDisp.CMD_NO_OP --dictionary "${DICT}" -l "${RUN_DIR}/cli-command" --log-directly \

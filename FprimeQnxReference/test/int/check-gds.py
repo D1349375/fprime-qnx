@@ -38,15 +38,33 @@ def check(directory, crash_event, crash_channel, advisor_pid, sessions=None):
     old_session = last_session(channels[:crash_channel])
     if old_session == 0:
         raise ValueError("no pre-crash advisor session in GDS")
+
+    pids = {}
+    if sessions is not None:
+        for line in sessions.read_text(encoding="utf-8").splitlines():
+            pid, session = map(int, line.split(","))
+            if session in pids and pids[session] != pid:
+                raise ValueError(f"conflicting PIDs for session {session}")
+            pids[session] = pid
+        if pids.get(old_session) != advisor_pid:
+            raise ValueError("pre-crash GDS session does not match the stopped advisor PID")
     fdir_seen = False
     for name, message in events[crash_event:]:
         if name.endswith(".ground.FdirEngaged"):
             fdir_seen = message.endswith(("RESULT_TIMEOUT", "SESSION_CHANGED"))
         if fdir_seen and name.endswith(".ground.AdvisorAccepted"):
             new_session = int(message.rsplit(" ", 1)[-1])
-            if new_session != old_session and new_session != 0:
-                break
+            if new_session == old_session or new_session == 0:
+                continue
+            if sessions is not None:
+                # A result from the old PID can reach GDS after the process-death notification.
+                replacement = pids.get(new_session, 0)
+                if replacement <= 1 or replacement == advisor_pid:
+                    continue
+            break
     else:
+        if sessions is not None:
+            raise ValueError("FDIR was not followed by acceptance of a replacement advisor's session")
         raise ValueError("GDS did not show FDIR followed by acceptance of a new advisor session")
     print("PASS FDIR and new advisor session")
 
@@ -63,15 +81,6 @@ def check(directory, crash_event, crash_channel, advisor_pid, sessions=None):
     print("PASS control source and attitude telemetry")
 
     if sessions is not None:
-        pids = {}
-        for line in sessions.read_text(encoding="utf-8").splitlines():
-            pid, session = map(int, line.split(","))
-            if session in pids and pids[session] != pid:
-                raise ValueError(f"conflicting PIDs for session {session}")
-            pids[session] = pid
-        replacement = pids.get(new_session, 0)
-        if pids.get(old_session) != advisor_pid or replacement <= 1 or replacement == advisor_pid:
-            raise ValueError("advisor session change does not match an SLM PID replacement")
         print("PASS SLM replaced the advisor and FlightSW accepted its session")
 
 
