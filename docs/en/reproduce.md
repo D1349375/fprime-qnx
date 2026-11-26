@@ -46,6 +46,28 @@ file build-artifacts/qnx-aarch64le/Ref/bin/Ref
 
 This was checked at `70db8bb5881dd9e2b616629f715d9ccdd9580cbc`. `file` reports a 64-bit little-endian AArch64 executable with the QNX interpreter `/usr/lib/ldqnx-64.so.2`, and `build-artifacts/qnx-aarch64le/Ref/dict/RefTopologyDictionary.json` contains `CMD_NO_OP`. The build only produces the executable. AArch64 execution needs a bootable AArch64 QNX target. [Limitations](limitations.md)
 
+## MathComponent tutorial adoption
+
+The project team adopted the F Prime [MathComponent tutorial](https://github.com/fprime-community/fprime-tutorial-math-component/tree/6dbbdc47d48315086c65354a7ea4d2f9352ee760) as a second existing deployment by following [the adoption guide](adopt.md). The import script clones the tutorial at the pinned commit, replaces its F Prime submodule with this project's pinned F Prime and applies the [two-line patch](../../adoption/math-qnx.patch).
+
+```bash
+scripts/import-math.sh
+(
+    cd adoption/math-tutorial
+    fprime-util generate qnx-x86_64
+    fprime-util build qnx-x86_64 --jobs 2
+)
+scripts/math-gds-check.sh
+```
+
+The check builds a new QNX guest and starts GDS on the host. It runs `MathDeployment` on the guest and prints one `PASS` line per step. `CMD_NO_OP` produces `NoOpReceived` and `OpCodeCompleted`. `mathSender.DO_MATH 1 ADD 2` produces `OPERATION_PERFORMED`, a result of 3 and the result telemetry. Setting the `mathReceiver` `FACTOR` parameter to 2 produces `FACTOR_UPDATED`, and the next addition returns 6. A division by zero produces `DIVIDE_BY_ZERO`. The receiver is a queued component that rate group 1 services, so each result passes through the `Svc.QnxTimer` tick. A final `SIGTERM` stops the timer and the deployment exits through its teardown. Set `QNX_IMAGE_DIR` and `QNX_SSH_KEY` to reuse a booted guest image. The printed evidence directory holds `verdict.txt`, the decoded `capture/event.log` and `capture/channel.log`, and the target console.
+
+```bash
+scripts/math-ut-check.sh
+```
+
+This command cross-builds the tutorial's own `MathSender` and `MathReceiver` unit tests in a separate build cache and runs them on a QNX guest. Read the passed and failed counts in `summary.tsv`. The same `QNX_IMAGE_DIR` and `QNX_SSH_KEY` settings reuse a guest image. If a new image fails to mount its filesystems on first boot, run the check again with that image.
+
 ## OSAL (V1)
 
 ```bash

@@ -1,0 +1,20 @@
+diff -ruN a/MathProject/MathDeployment/Top/instances.fpp b/MathProject/MathDeployment/Top/instances.fpp
+--- a/MathProject/MathDeployment/Top/instances.fpp
++++ b/MathProject/MathDeployment/Top/instances.fpp
+@@ -68,7 +68,7 @@
+ 
+   instance systemResources: Svc.SystemResources base id 0x10012000
+ 
+-  instance timer: Svc.LinuxTimer base id 0x10013000
++  instance timer: Svc.QnxTimer base id 0x10013000
+ 
+   instance comDriver: Drv.TcpClient base id 0x10014000
+ 
+diff -ruN a/settings.ini b/settings.ini
+--- a/settings.ini
++++ b/settings.ini
+@@ -1,3 +1,4 @@
+ [fprime]
+ project_root: .
+ framework_path: ./lib/fprime
++library_locations: ../../FprimeQnx
