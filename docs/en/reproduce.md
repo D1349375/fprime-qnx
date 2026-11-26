@@ -50,6 +50,12 @@ scripts/math-gds-check.sh
 
 The check builds a new QNX guest and starts GDS on the host. It runs `MathDeployment` on the guest and prints one `PASS` line per step. `CMD_NO_OP` produces `NoOpReceived` and `OpCodeCompleted`. `mathSender.DO_MATH 1 ADD 2` produces `OPERATION_PERFORMED`, a result of 3 and the result telemetry. Setting the `mathReceiver` `FACTOR` parameter to 2 produces `FACTOR_UPDATED`, and the next addition returns 6. A division by zero produces `DIVIDE_BY_ZERO`. The receiver is a queued component that rate group 1 services, so each result passes through the `Svc.QnxTimer` tick. A final `SIGTERM` stops the timer and the deployment exits through its teardown. Set `QNX_IMAGE_DIR` and `QNX_SSH_KEY` to reuse a booted guest image. The printed evidence directory holds `verdict.txt`, the decoded `capture/event.log` and `capture/channel.log`, and the target console.
 
+```bash
+scripts/math-ut-check.sh
+```
+
+This command cross-builds the tutorial's own `MathSender` and `MathReceiver` unit tests in a separate build cache and runs them on a QNX guest. Read the passed and failed counts in `summary.tsv`. The same `QNX_IMAGE_DIR` and `QNX_SSH_KEY` settings reuse a guest image. If a new image fails to mount its filesystems on first boot, run the check again with that image.
+
 ## OSAL (V1)
 
 ```bash
