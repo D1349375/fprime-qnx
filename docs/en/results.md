@@ -13,7 +13,7 @@ Target checks used QNX SDP 8.0.6 with `qcc` GCC 12.2.0 on QNX 8.0.0 x86-64 under
 
 ## OSAL (V1)
 
-The pinned F Prime v4.4.2 OSAL sources ran with the project's [test portability patch](../../adoption/osal-test-portability.patch) on the QNX target. The test executables reported **258 passed, 0 failed, 1 skipped** across 17 suites. Early V1 used the stock test assumptions and exposed portability failures. The table includes the later patched run and the three native CPU and memory checks added in I-85. [Portability change](https://github.com/D1349375/fprime-qnx/pull/5) · [OSAL rerun](reproduce.md#osal-v1)
+The pinned F Prime v4.4.2 OSAL sources ran with the project's [test portability patch](../../adoption/osal-test-portability.patch) on the QNX target. The integrated runtime candidate reported **261 passed, 0 failed, 1 skipped** across 18 suites. The 17 upstream suites account for 258 passed and 1 skipped, and the project's `QnxSystemResourcesTest` adds the three native CPU and memory checks from I-85. Early V1 used the stock test assumptions and exposed portability failures. The table lists the patched candidate run recorded in [I-91](../zh/實作迭代紀錄.md#i-91--verify-the-integrated-qnx-runtime-candidate-2026-11-26). [Portability change](https://github.com/D1349375/fprime-qnx/pull/5) · [OSAL rerun](reproduce.md#osal-v1)
 
 | Suite | Passed | Failed | Skipped |
 | --- | ---: | ---: | ---: |

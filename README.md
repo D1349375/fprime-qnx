@@ -87,7 +87,7 @@ commands and acceptance checks for the GDS deployment and the separate trained-a
 | Check | Observed result |
 | --- | --- |
 | Ref and GDS | Clean cross-build and QNX boot, two NO-OP events and rate group 1 telemetry. [Ref results](docs/en/results.md#ref-and-adcs-ground-system) |
-| F Prime OSAL suites with the portability patch | 258 passed, 0 failed, 1 skipped across 17 suites. The guest lacks `/dev/full`. Three additional native CPU and memory checks pass. [Suite results](docs/en/results.md#osal-v1) |
+| F Prime OSAL suites with the portability patch | 261 passed, 0 failed, 1 skipped across 18 suites: 258 passed and 1 skipped in the 17 upstream suites, plus three native CPU and memory checks. The guest lacks `/dev/full`. [Suite results](docs/en/results.md#osal-v1) |
 | ADCS GDS | The stopped advisor's `ProcessDied` reached GDS. FlightSW used FDIR, accepted a fresh session after SLM replacement and reconnected to GDS. [Ground results](docs/en/results.md#ref-and-adcs-ground-system) |
 | ADCS fault cases | Separate FlightSW and advisor processes used UDP and native IPC. The fault matrix exercised FDIR, Gate rejection, sensor isolation and a held IPC reply. [Fault results](docs/en/results.md#deterministic-adcs) |
 | Trained advisor and offline inference | The frozen candidate's cohort has a [restart behavior summary](docs/en/results.md#frozen-candidate-restart-behavior) for fresh-session adoption, replay and revoked-session rejection. The separate OPS-SAT replay matched scores within tolerance and produced matching labels on Linux and QNX. [Model results](docs/en/results.md#trained-advisor-and-offline-replay) |
@@ -121,9 +121,9 @@ model preparation, replay and SDK-free host checks.
 
 ## Limitations
 
-Target evidence covers an x86-64 QNX guest under WSL2 and QEMU/KVM. AArch64 has a
-toolchain file. AArch64 builds and execution and physical QNX hardware remain
-unverified. Repeated guest tests observed occasional missing cycles. ADCS uses
+Target evidence covers an x86-64 QNX guest under WSL2 and QEMU/KVM. Ref also
+cross-builds for QNX AArch64. The ADCS AArch64 build, AArch64 execution and
+physical QNX hardware remain unverified. Repeated guest tests observed occasional missing cycles. ADCS uses
 simulated sensors with a fixed bias and a slow drift on one sensor. In the bias
 exercise FDIR and the FFN first alerted in the same cycle. In the drift comparison
 the conventional residual warned first. Hosted CI runs on Linux.
