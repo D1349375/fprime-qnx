@@ -56,7 +56,7 @@ cleanup() {
             "cd '$target_dir' && { [ ! -s math.pid ] || kill -KILL \$(cat math.pid); } 2>/dev/null; cat math.log" \
             </dev/null >"$run/target-console.log" 2>>"$run/cleanup.log"
         ssh "${ssh_opts[@]}" "root@$guest" \
-            "cd '$target_dir' && rm -f MathProject_MathDeployment math.log math.pid PrmDb.dat && cd / && rmdir '$target_dir'" \
+            "ls -A '$target_dir' && rm -rf -- '$target_dir'" \
             </dev/null >>"$run/cleanup.log" 2>&1
     fi
     if [[ -n "$capture_pid" ]]; then
