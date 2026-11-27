@@ -1,6 +1,32 @@
 #!/usr/bin/env bash
 # Common QNX SDP 8.0 mkqnximage/QEMU helpers for the validation scripts.
 
+# Stop a process group started with `setsid --wait ... &` (pass its PID, which is also the group ID).
+# fprime-gds's comm helper joins its uplink and downlink threads inside its SIGTERM handler. When a
+# thread is blocked on the deployment's TCP connection the join never returns, the helper keeps its
+# ports and ZMQ endpoints, and the next GDS start on the same port fails. Allow a grace period, then
+# send SIGKILL to whatever is left of the group.
+stop_process_group() {
+    local pid="$1" grace="${2:-10}" deadline killed=0
+    [[ "$pid" =~ ^[1-9][0-9]*$ ]] || return 0
+    kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
+    deadline=$((SECONDS + grace))
+    # A killed process stays visible to kill -0 until it is reaped, so keep polling after SIGKILL.
+    while kill -0 -- "-$pid" 2>/dev/null; do
+        if (( ! killed && SECONDS >= deadline )); then
+            printf 'Process group %s did not stop within %s s of SIGTERM; sending SIGKILL\n' "$pid" "$grace" >&2
+            kill -KILL -- "-$pid" 2>/dev/null || true
+            killed=1
+            deadline=$((SECONDS + 5))
+        elif (( killed && SECONDS >= deadline )); then
+            printf 'Process group %s is still present 5 s after SIGKILL\n' "$pid" >&2
+            break
+        fi
+        sleep 0.2
+    done
+    wait "$pid" 2>/dev/null || true
+}
+
 qnx_vm_build_image() {
     local image_dir="$1" hostname="$2" public_key="$3"
     shift 3

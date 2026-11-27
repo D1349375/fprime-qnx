@@ -65,8 +65,7 @@ cleanup() {
     fi
     if [[ -n "$gds_pid" ]]; then
         # fprime-gds starts helper processes; stop its whole session so none keeps the port or ZMQ endpoints.
-        kill -TERM -- "-$gds_pid" 2>/dev/null
-        wait "$gds_pid" 2>/dev/null
+        stop_process_group "$gds_pid"
     fi
     if [[ -n "$endpoint_dir" ]]; then
         rm -f -- "$endpoint_dir/in" "$endpoint_dir/out"
