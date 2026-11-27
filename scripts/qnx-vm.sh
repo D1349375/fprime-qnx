@@ -74,22 +74,34 @@ qnx_vm_start() {
 qnx_vm_find_guest() {
     local image_dir="$1"
     shift
-    local mac guest deadline=$((SECONDS + 120))
+    local mac leases guest deadline=$((SECONDS + 120))
+    local -a candidates
     mac="$(sed -nE "s/^OPT_MACADDR='([[:xdigit:]:]+)'$/\1/p" "$image_dir/output/options")"
     [[ "$mac" =~ ^([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}$ ]] || return 1
 
     while (( SECONDS < deadline )); do
-        guest="$(virsh -c qemu:///system net-dhcp-leases default 2>/dev/null |
-            awk -v mac="$mac" 'tolower($3) == tolower(mac) && $4 == "ipv4" { sub(/\/.*/, "", $5); print $5; exit }')" ||
-            guest=""
-        if [[ -z "$guest" ]]; then
+        # dhcpcd keeps its DUID on the guest's data file system. A boot stopped before that write is
+        # committed leaves no DUID, so the next boot sends a new one and gets another lease for the same
+        # MAC. Try the latest expiry first and every other lease after it, so a stale lease cannot block
+        # readiness. Capture the listing before parsing: an early-exit reader in the pipe could kill
+        # virsh with SIGPIPE.
+        leases="$(virsh -c qemu:///system net-dhcp-leases default 2>/dev/null)" || leases=""
+        mapfile -t candidates < <(printf '%s\n' "$leases" |
+            awk -v mac="$mac" 'tolower($3) == tolower(mac) && $4 == "ipv4" {
+                sub(/\/.*/, "", $5)
+                if ($5 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) print $1 " " $2 " " $5
+            }' | LC_ALL=C sort -r | awk '!seen[$3]++ { print $3 }')
+        if (( ${#candidates[@]} == 0 )); then
             guest="$(cd "$image_dir" && mkqnximage --getip 2>/dev/null |
                 grep -E '^[0-9]+(\.[0-9]+){3}$' | tail -1)" || guest=""
+            [[ -n "$guest" ]] && candidates=("$guest")
         fi
-        if [[ -n "$guest" ]] && ssh "$@" "root@$guest" true > /dev/null 2>&1; then
-            printf '%s\n' "$guest"
-            return 0
-        fi
+        for guest in "${candidates[@]}"; do
+            if ssh "$@" "root@$guest" true > /dev/null 2>&1; then
+                printf '%s\n' "$guest"
+                return 0
+            fi
+        done
         sleep 2
     done
     return 1
