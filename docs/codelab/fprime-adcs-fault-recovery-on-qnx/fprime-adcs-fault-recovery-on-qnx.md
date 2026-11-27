@@ -15,7 +15,7 @@ feedback_link: https://github.com/qnx/codelabs/issues
 ## Overview
 Duration: 2:00
 
-**Draft rehearsal** used the runtime at fprime-qnx commit `37db15be76f60b5c5084032d9ec1325be0885439` on 2026-11-26 with QNX SDP 8.0.6 and a QNX 8.0.0 x86-64 QEMU/KVM guest under WSL2. Use the Codelab review checkout for its updated GDS checks.
+**Last verified** on 2026-11-27 at fprime-qnx commit `752c5d4d7786767744440089a1e2224db7e9e145` with QNX SDP 8.0.6 and a QNX 8.0.0 x86-64 QEMU/KVM guest under WSL2.
 
 The reference deployment simulates an attitude determination and control system (ADCS). `FlightSW` produces an attitude estimate and selects the control source. `MlAdvisor` runs in a separate QNX process and supplies advice through native QNX message passing. This exercise uses the built-in deterministic advisor to make the restart scenario reproducible.
 
@@ -27,20 +27,20 @@ Stop the advisor in a disposable guest and follow the recovery in F Prime's Grou
 ## System Set Up
 Duration: 15:00
 
-Install the Ubuntu packages, enable the libvirt `default` network with `virbr0`, and install your licensed QNX SDP through QNX Software Center. Use the Ubuntu filesystem for the build and the guest image. [Host setup](https://github.com/D1349375/fprime-qnx/blob/37db15be76f60b5c5084032d9ec1325be0885439/docs/en/host-setup.md)
+Install the Ubuntu packages, enable the libvirt `default` network with `virbr0`, and install your licensed QNX SDP through QNX Software Center. Use the Ubuntu filesystem for the build and the guest image. [Host setup](https://github.com/D1349375/fprime-qnx/blob/752c5d4d7786767744440089a1e2224db7e9e145/docs/en/host-setup.md)
 
-Run these commands in Ubuntu to fetch the public rehearsal base. If you are reviewing the Codelab in the project PR, use that checkout and run only the submodule and revision commands.
+Run these commands in Ubuntu to clone the repository at the revision this codelab was verified with.
 
 ```bash
 git clone --no-checkout https://github.com/D1349375/fprime-qnx.git
 cd fprime-qnx
-git checkout --detach 37db15be76f60b5c5084032d9ec1325be0885439
+git checkout --detach 752c5d4d7786767744440089a1e2224db7e9e145
 git submodule update --init --recursive
 git rev-parse HEAD
 git submodule status --recursive
 ```
 
-Install the F Prime tools pinned by the submodule. In each Ubuntu terminal you use for the build or runner, activate the SDK and virtual environment. Substitute your installation paths where needed. [QNX SDK and F Prime tools](https://github.com/D1349375/fprime-qnx/blob/37db15be76f60b5c5084032d9ec1325be0885439/docs/en/host-setup.md#qnx-sdk-and-f-prime-tools)
+Install the F Prime tools pinned by the submodule. In each Ubuntu terminal you use for the build or runner, activate the SDK and virtual environment. Substitute your installation paths where needed. [QNX SDK and F Prime tools](https://github.com/D1349375/fprime-qnx/blob/752c5d4d7786767744440089a1e2224db7e9e145/docs/en/host-setup.md#qnx-sdk-and-f-prime-tools)
 
 ```bash
 source "$HOME/qnx800/qnxsdp-env.sh"
@@ -75,18 +75,27 @@ The two executables should be x86-64 ELF files. The GDS runner loads this build'
 ## Start GDS and Record the Baseline
 Duration: 5:00
 
-From the repository root, run the interactive check in a terminal that accepts input. Keep the terminal open. The runner creates a QNX guest, starts GDS, deploys the two processes and sends `CdhCore.cmdDisp.CMD_NO_OP`. It prints the path to an evidence directory before starting the guest. [Interactive runner](https://github.com/D1349375/fprime-qnx/blob/37db15be76f60b5c5084032d9ec1325be0885439/scripts/gds-check.sh)
+From the repository root, run the interactive check in a terminal that accepts input. Keep the terminal open. The runner creates a QNX guest, starts GDS, deploys the two processes and sends `CdhCore.cmdDisp.CMD_NO_OP`. It prints the path to an evidence directory before starting the guest. [Interactive runner](https://github.com/D1349375/fprime-qnx/blob/752c5d4d7786767744440089a1e2224db7e9e145/scripts/gds-check.sh)
 
 ```bash
 mkdir -p "$HOME/fprime-qnx-evidence"
 GDS_EVIDENCE_ROOT="$HOME/fprime-qnx-evidence" scripts/gds-check.sh --ui
 ```
 
-Wait for `Open Events, then press Enter here to stop the advisor.` Open [http://localhost:5000](http://localhost:5000/) in your browser. On WSL2, open the same URL in the Windows browser. Leave the terminal paused while you establish the baseline.
+The browser shows only the events and channel samples that arrive while the page is open. After the runner prints `GDS evidence:`, open [http://localhost:5000](http://localhost:5000/) in your browser and reload it until GDS answers, which happens before FlightSW starts. On WSL2, open the same URL in the Windows browser. Go to **Channels** and enter `M2Flight.ground` in **Filters**.
+
+Wait for `Open Events, then press Enter here to stop the advisor.` Leave the terminal paused while you establish the baseline.
 
 Open **Events** and enter `CdhCore.cmdDisp` in **Filters**. Look for `CdhCore.cmdDisp.NoOpReceived` and `CdhCore.cmdDisp.OpCodeCompleted`. If you opened the page after those events arrived, go to **Commanding**, select `CdhCore.cmdDisp.CMD_NO_OP` and click **Send Command**. Return to **Events** to see the response.
 
-In **Channels**, enter `M2Flight.ground` in **Filters**. Wait for values for `ControlSource` and `AdvisorSession`. Note the session shown alongside `ControlSource = ML`. The `ML` enum label identifies advisor-derived control in this deployment.
+In **Channels**, with `M2Flight.ground` in **Filters**, read the values of `ControlSource` and `AdvisorSession`. Note the session shown alongside `ControlSource = ML`. The `ML` enum label identifies advisor-derived control in this deployment.
+
+FlightSW sends these two channels only when they change. If the page opened after FlightSW started and they stay empty, read their latest values from the runner's capture in a second Ubuntu terminal. Keep that terminal for the later steps.
+
+```bash
+read -r -p 'GDS evidence directory: ' RUN
+grep -E 'ControlSource|AdvisorSession' "$RUN/capture/channel.log" | tail -n 2
+```
 
 ![Channels at the first pause show ML and the original advisor session](img/adcs-baseline.png)
 
@@ -101,7 +110,7 @@ Read the recovery events in timestamp order.
 2. `M2Flight.ground.FdirEngaged` marks the handover to deterministic FDIR.
 3. A later `M2Flight.ground.AdvisorAccepted` identifies the fresh session that FlightSW accepted.
 
-Check **Event Time** if the table order has changed. The event list can also show session changes from the original process. Match the post-fallback `AdvisorAccepted` to the replacement PID in the next step.
+Check **Event Time** if the table order has changed. Rows before `ProcessDied` can include an `FdirEngaged` and `AdvisorAccepted` pair from the original process, for example when its first session times out during startup. Match the `AdvisorAccepted` after `ProcessDied` to the replacement PID in the next step.
 
 ![Events show ProcessDied, FdirEngaged and AdvisorAccepted for the replacement session](img/adcs-recovery.png)
 
@@ -112,10 +121,10 @@ In **Channels**, read `M2Flight.ground.ControlSource` and `M2Flight.ground.Advis
 
 ![Channels after recovery show ML with the replacement's session](img/adcs-rejoined.png)
 
-While the runner is paused, open a second Ubuntu terminal. Paste the directory printed after `GDS evidence:` when prompted.
+While the runner is paused, use the second Ubuntu terminal, or open one now and paste the directory printed after `GDS evidence:` when prompted.
 
 ```bash
-read -r -p 'GDS evidence directory: ' RUN
+[ -n "${RUN:-}" ] || read -r -p 'GDS evidence directory: ' RUN
 cat "$RUN/sessions.csv"
 awk -F, '$3 == "M2Flight.ground.ControlSource" && $5 != previous {
     print $5
@@ -123,9 +132,9 @@ awk -F, '$3 == "M2Flight.ground.ControlSource" && $5 != previous {
 }' "$RUN/capture/channel.log"
 ```
 
-`sessions.csv` lists `PID,session` pairs. Find the PID from `ProcessDied` and the row for the session currently shown in `AdvisorSession`. The current session must have a different PID. Match that session to its `AdvisorAccepted` event. The `ControlSource` capture should contain `ML → FDIR → ML` in that order.
+`sessions.csv` lists `PID,session` pairs. Find the PID from `ProcessDied` and the row for the session currently shown in `AdvisorSession`. The current session must have a different PID. Match that session to its `AdvisorAccepted` event. The `ControlSource` capture should contain `ML → FDIR → ML` in that order. A session change of the original process before the stop adds another `FDIR → ML` pair ahead of it.
 
-The replacement PID shows that SLM restarted the process. The fresh session in the event and channels shows that FlightSW accepted the replacement's advice. [SLM configuration template](https://github.com/D1349375/fprime-qnx/blob/37db15be76f60b5c5084032d9ec1325be0885439/FprimeQnxReference/qnx/m3-slm.xml.in) · [QNX SLM documentation](https://www.qnx.com/developers/docs/8.0/com.qnx.doc.neutrino.utilities/topic/s/slm.html)
+The replacement PID shows that SLM restarted the process. The fresh session in the event and channels shows that FlightSW accepted the replacement's advice. [SLM configuration template](https://github.com/D1349375/fprime-qnx/blob/752c5d4d7786767744440089a1e2224db7e9e145/FprimeQnxReference/qnx/m3-slm.xml.in) · [QNX SLM documentation](https://www.qnx.com/developers/docs/8.0/com.qnx.doc.neutrino.utilities/topic/s/slm.html)
 
 ## Finish the Checks and Stop the Guest
 Duration: 3:00
@@ -157,4 +166,4 @@ Duration: 3:00
 - **Port 5000 is busy** Stop the GDS session you no longer need or run `GDS_GUI_PORT=5001 scripts/gds-check.sh --ui` with the same evidence directory setting. Open the matching web port. The runner selects a separate TCP port for the guest connection.
 - **The page stops updating after the second Enter** The reconnect step restarts GDS and then stops the guest. Inspect `capture/event.log` and `capture/channel.log` for the recorded events and telemetry.
 
-The codelab covers the simulated ADCS fault sequence on a QNX x86-64 guest. For the learned advisor, model replay, or deadline validation, follow the separate target checks. [Architecture](https://github.com/D1349375/fprime-qnx/blob/37db15be76f60b5c5084032d9ec1325be0885439/docs/en/architecture.md) · [Reproduction guide](https://github.com/D1349375/fprime-qnx/blob/37db15be76f60b5c5084032d9ec1325be0885439/docs/en/reproduce.md#adcs-ground-system)
+The codelab covers the simulated ADCS fault sequence on a QNX x86-64 guest. For the learned advisor, model replay, or deadline validation, follow the separate target checks. [Architecture](https://github.com/D1349375/fprime-qnx/blob/752c5d4d7786767744440089a1e2224db7e9e145/docs/en/architecture.md) · [Reproduction guide](https://github.com/D1349375/fprime-qnx/blob/752c5d4d7786767744440089a1e2224db7e9e145/docs/en/reproduce.md#adcs-ground-system)

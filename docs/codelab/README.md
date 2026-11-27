@@ -7,7 +7,7 @@ Each folder is laid out for review in this repository and for later submission u
 | [Run the NASA F Prime Ref Deployment on QNX 8.0 with QEMU](fprime-ref-on-qnx/fprime-ref-on-qnx.md) | Build upstream Ref for a QNX guest, send a NO-OP from GDS, and see both responses and rate group telemetry. |
 | [Observe F Prime ADCS Fault Recovery on QNX 8.0](fprime-adcs-fault-recovery-on-qnx/fprime-adcs-fault-recovery-on-qnx.md) | Follow the stopped advisor, FDIR takeover, SLM replacement, and acceptance of a new advisor session in GDS. |
 
-Both drafts use the pre-freeze rehearsal commit `37db15be76f60b5c5084032d9ec1325be0885439`. The screenshots document that rehearsal. The review branch includes the two GDS check fixes used in the reruns. [Implementation and verification](../zh/實作迭代紀錄.md#i-92--rehearse-both-qnx-codelabs-2026-11-26)
+Both tutorials were last verified on 2026-11-27 at commit `752c5d4d7786767744440089a1e2224db7e9e145`, and the screenshots come from that run. The commit includes the GDS check repairs from the first rehearsal, the guest start and lease fixes and the GDS shutdown fix. [Rehearsal](../zh/實作迭代紀錄.md#i-92--rehearse-both-qnx-codelabs-2026-11-26) · [Refresh](../zh/實作迭代紀錄.md#i-99--refresh-both-qnx-codelabs-2026-11-27)
 
 ## Preview both drafts
 
@@ -26,6 +26,6 @@ Open [Ref preview](http://localhost:8080/fprime-ref-on-qnx/) and [ADCS preview](
 
 ## Freeze and submit
 
-1. Replace the rehearsal SHA in both checkout commands and project links with the full `SUBMISSION_COMMIT` SHA when the submission revision is frozen.
-2. Rerun both tutorials at that revision, apply any verified E11 setup corrections, replace the rehearsal screenshots and add a **Last verified** line with the final SHA and run date. Recheck links, metadata, and both rendered previews.
+1. When the submission revision is frozen, check whether it changes any file the tutorials use: the GDS and guest helper scripts, `scripts/import-ref.sh`, `adoption/ref-qnx.patch`, `FprimeQnx`, `FprimeQnxReference` or the host setup guide. If none changed, the verified commit stays. Otherwise replace the SHA in both checkout commands and project links.
+2. After a SHA change, rerun both tutorials at that revision, replace the screenshots and update the **Last verified** line with the SHA and run date. Recheck links, metadata, and both rendered previews.
 3. The project owner submits one PR per tutorial. Each PR changes only its own `markdown/<id>/` directory in `qnx/codelabs`. Keep `status: draft` during project review. Before publication, set `status: published` and set `published` to the first publication date. [Contribution guide](https://qnx.github.io/codelabs/codelab-to-create-codelab/#0)

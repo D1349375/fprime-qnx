@@ -56,8 +56,7 @@ guest=
 flight_pid=
 stop_gds() {
     if [[ -n "$gds_pid" ]]; then
-        kill -TERM -- "-$gds_pid" 2>/dev/null || true
-        wait "$gds_pid" 2>/dev/null || true
+        stop_process_group "$gds_pid"
         gds_pid=
     fi
 }

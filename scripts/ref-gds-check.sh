@@ -49,8 +49,7 @@ cleanup() {
     fi
     if [ -n "${GDS_PID}" ]; then
         # fprime-gds starts helper processes; stop its whole session so none keeps the port or ZMQ endpoints.
-        kill -TERM -- "-${GDS_PID}" >/dev/null 2>&1 || kill "${GDS_PID}" >/dev/null 2>&1
-        wait "${GDS_PID}" 2>/dev/null
+        stop_process_group "${GDS_PID}"
     fi
 }
 trap cleanup EXIT
