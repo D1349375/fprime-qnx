@@ -15,11 +15,11 @@ feedback_link: https://github.com/qnx/codelabs/issues
 ## Overview
 Duration: 3:00
 
-**Last verified** on 2026-11-27 at fprime-qnx commit `752c5d4d7786767744440089a1e2224db7e9e145` with QNX SDP 8.0.6, Ubuntu 24.04 under WSL2, and a QNX 8.0.0 x86-64 QEMU/KVM guest.
+**Last verified** on 2026-11-27 at fprime-qnx commit `752c5d4d7786767744440089a1e2224db7e9e145` with QNX SDP 8.0.6, Ubuntu 24.04 under WSL2, and a QNX 8.0.0 x86-64 QEMU/KVM guest. Links to project documentation point to commit `f89c5c805072137cbb4501e6df660c7d96873fb4`, which changes only documentation after the verified commit.
 
 [F Prime](https://github.com/nasa/fprime) is the open-source flight software framework from NASA's Jet Propulsion Laboratory. Its `Ref` deployment is the reference application that ships with the framework: a set of components connected into a topology, driven by rate groups, and controlled from the F Prime ground data system (GDS).
 
-In this codelab you take the upstream `Ref` from the pinned F Prime release, apply a small adoption patch, cross-build it for QNX 8.0 with the [fprime-qnx](https://github.com/D1349375/fprime-qnx/tree/752c5d4d7786767744440089a1e2224db7e9e145) platform library, and run it in a QNX 8.0 x86-64 guest under QEMU/KVM. Then you send a command from the GDS on your Linux host and watch the answer come back from QNX.
+In this codelab you take the upstream `Ref` from the pinned F Prime release, apply a small adoption patch, cross-build it for QNX 8.0 with the [fprime-qnx](https://github.com/D1349375/fprime-qnx/tree/f89c5c805072137cbb4501e6df660c7d96873fb4) platform library, and run it in a QNX 8.0 x86-64 guest under QEMU/KVM. Then you send a command from the GDS on your Linux host and watch the answer come back from QNX.
 
 ### What you'll build
 
@@ -49,13 +49,13 @@ F Prime on QNX is an independent project. This exercise covers a QNX 8.0.0 x86-6
 ## System Set Up
 Duration: 15:00
 
-The project keeps its host setup instructions in one place, the [fprime-qnx host setup guide](https://github.com/D1349375/fprime-qnx/blob/752c5d4d7786767744440089a1e2224db7e9e145/docs/en/host-setup.md). Follow it for the package list, the guest network and the QNX SDK. This step summarizes what it sets up and how to check each part.
+The project keeps its host setup instructions in one place, the [fprime-qnx host setup guide](https://github.com/D1349375/fprime-qnx/blob/f89c5c805072137cbb4501e6df660c7d96873fb4/docs/en/host-setup.md). Follow it for the package list, the guest network and the QNX SDK. This step summarizes what it sets up and how to check each part.
 
 Run every command in this codelab in an Ubuntu 24.04 shell. Keep the checkout on the Linux filesystem (for example under `$HOME`), not on a Windows drive mounted under `/mnt`. On Windows, use Ubuntu 24.04 under [WSL](https://learn.microsoft.com/en-us/windows/wsl/install) version `2` with [systemd enabled](https://learn.microsoft.com/en-us/windows/wsl/systemd).
 
 ### Linux tools, KVM and the guest network
 
-Install the packages listed under [Linux tools and guest network](https://github.com/D1349375/fprime-qnx/blob/752c5d4d7786767744440089a1e2224db7e9e145/docs/en/host-setup.md#linux-tools-and-guest-network). They include the compilers and build tools, Python, the SSH client, QEMU and libvirt.
+Install the packages listed under [Linux tools and guest network](https://github.com/D1349375/fprime-qnx/blob/f89c5c805072137cbb4501e6df660c7d96873fb4/docs/en/host-setup.md#linux-tools-and-guest-network). They include the compilers and build tools, Python, the SSH client, QEMU and libvirt.
 
 The QNX guest gets its address from the libvirt `default` network and reaches your host through the `virbr0` bridge. Start that network and allow the QEMU bridge helper to use `virbr0` as shown in the [QSTI on QEMU using WSL codelab](https://qnx.github.io/codelabs/qsti-qemu-on-wsl/index.html). The same steps apply to native Ubuntu.
 
@@ -69,7 +69,7 @@ ip -brief address show virbr0
 
 ### QNX SDP 8.0
 
-Install QNX SDP 8.0 with the x86-64 target through QNX Software Center, as described under [QNX SDK and F Prime tools](https://github.com/D1349375/fprime-qnx/blob/752c5d4d7786767744440089a1e2224db7e9e145/docs/en/host-setup.md#qnx-sdk-and-f-prime-tools). The project was verified with SDP 8.0.6. The installation must provide `qcc`, `q++` and `mkqnximage`. The examples assume the location `$HOME/qnx800`.
+Install QNX SDP 8.0 with the x86-64 target through QNX Software Center, as described under [QNX SDK and F Prime tools](https://github.com/D1349375/fprime-qnx/blob/f89c5c805072137cbb4501e6df660c7d96873fb4/docs/en/host-setup.md#qnx-sdk-and-f-prime-tools). The project was verified with SDP 8.0.6. The installation must provide `qcc`, `q++` and `mkqnximage`. The examples assume the location `$HOME/qnx800`.
 
 ```bash
 source "$HOME/qnx800/qnxsdp-env.sh"
@@ -102,7 +102,7 @@ git submodule status --recursive
 
 ### Install the F Prime tools
 
-From the repository root, create the Python virtual environment and install the F Prime tools pinned by the submodule, following [QNX SDK and F Prime tools](https://github.com/D1349375/fprime-qnx/blob/752c5d4d7786767744440089a1e2224db7e9e145/docs/en/host-setup.md#qnx-sdk-and-f-prime-tools). The examples assume the environment at `$HOME/.venvs/fprime-qnx`.
+From the repository root, create the Python virtual environment and install the F Prime tools pinned by the submodule, following [QNX SDK and F Prime tools](https://github.com/D1349375/fprime-qnx/blob/f89c5c805072137cbb4501e6df660c7d96873fb4/docs/en/host-setup.md#qnx-sdk-and-f-prime-tools). The examples assume the environment at `$HOME/.venvs/fprime-qnx`.
 
 Confirm that the QNX and F Prime tools are on your `PATH`:
 
@@ -386,7 +386,7 @@ Duration: 3:00
 
 ### The guest never gets an address
 
-Check that the libvirt `default` network is active with `virsh -c qemu:///system net-list --all`. If it is inactive, start it using the [host setup guide](https://github.com/D1349375/fprime-qnx/blob/752c5d4d7786767744440089a1e2224db7e9e145/docs/en/host-setup.md#linux-tools-and-guest-network).
+Check that the libvirt `default` network is active with `virsh -c qemu:///system net-list --all`. If it is inactive, start it using the [host setup guide](https://github.com/D1349375/fprime-qnx/blob/f89c5c805072137cbb4501e6df660c7d96873fb4/docs/en/host-setup.md#linux-tools-and-guest-network).
 
 If the network is active, inspect the guest serial log.
 
@@ -433,7 +433,7 @@ The same four steps apply to an existing F Prime deployment:
 3. Change rate group timers of type `Svc.LinuxTimer` to `Svc.QnxTimer` and keep their cycle output connections.
 4. Review platform-specific drivers and components, then run your own GDS, hardware and integration checks.
 
-The [adoption guide](https://github.com/D1349375/fprime-qnx/blob/752c5d4d7786767744440089a1e2224db7e9e145/docs/en/adopt.md) explains each step. The project applied the same steps to the F Prime [MathComponent tutorial](https://github.com/fprime-community/fprime-tutorial-math-component), an existing deployment with its own components, ports, types and parameter. Its [two-line patch](https://github.com/D1349375/fprime-qnx/blob/752c5d4d7786767744440089a1e2224db7e9e145/adoption/math-qnx.patch) registers the library and switches the timer, and the [reproduction steps](https://github.com/D1349375/fprime-qnx/blob/752c5d4d7786767744440089a1e2224db7e9e145/docs/en/reproduce.md#mathcomponent-tutorial-adoption) run its commands and unit tests on the QNX guest.
+The [adoption guide](https://github.com/D1349375/fprime-qnx/blob/f89c5c805072137cbb4501e6df660c7d96873fb4/docs/en/adopt.md) explains each step. The project applied the same steps to the F Prime [MathComponent tutorial](https://github.com/fprime-community/fprime-tutorial-math-component), an existing deployment with its own components, ports, types and parameter. Its [two-line patch](https://github.com/D1349375/fprime-qnx/blob/752c5d4d7786767744440089a1e2224db7e9e145/adoption/math-qnx.patch) registers the library and switches the timer, and the [reproduction steps](https://github.com/D1349375/fprime-qnx/blob/f89c5c805072137cbb4501e6df660c7d96873fb4/docs/en/reproduce.md#mathcomponent-tutorial-adoption) run its commands and unit tests on the QNX guest.
 
 ### Know the limits
 
@@ -442,10 +442,10 @@ The [adoption guide](https://github.com/D1349375/fprime-qnx/blob/752c5d4d7786767
 * `Ref` on QNX omits the Rust-based `WasmSequencer` and keeps `cmdSeq`.
 * This codelab does not measure timing. The limitations page describes the project's test environment. Native Linux/KVM and physical hardware were not run.
 
-The [limitations page](https://github.com/D1349375/fprime-qnx/blob/752c5d4d7786767744440089a1e2224db7e9e145/docs/en/limitations.md) has the full list.
+The [limitations page](https://github.com/D1349375/fprime-qnx/blob/f89c5c805072137cbb4501e6df660c7d96873fb4/docs/en/limitations.md) has the full list.
 
 ### Go further
 
-* The [ADCS reference](https://github.com/D1349375/fprime-qnx/tree/752c5d4d7786767744440089a1e2224db7e9e145/FprimeQnxReference) splits flight software and an advisor into two processes that use native QNX message passing and SLM supervision. Its GDS check shows a fault, the recovery and a supervised restart. [Reproduction guide](https://github.com/D1349375/fprime-qnx/blob/752c5d4d7786767744440089a1e2224db7e9e145/docs/en/reproduce.md)
+* The [ADCS reference](https://github.com/D1349375/fprime-qnx/tree/752c5d4d7786767744440089a1e2224db7e9e145/FprimeQnxReference) splits flight software and an advisor into two processes that use native QNX message passing and SLM supervision. Its GDS check shows a fault, the recovery and a supervised restart. [Reproduction guide](https://github.com/D1349375/fprime-qnx/blob/f89c5c805072137cbb4501e6df660c7d96873fb4/docs/en/reproduce.md)
 * Follow the platform discussion with the F Prime maintainers in [nasa/fprime discussion #6436](https://github.com/nasa/fprime/discussions/6436).
 * Read the F Prime [platform porting guide](https://fprime.jpl.nasa.gov/v4.4.0/docs/how-to/integrate/porting-guide/) and the [GDS documentation](https://fprime.jpl.nasa.gov/v4.4.0/docs/user-manual/overview/gds-introduction/).
