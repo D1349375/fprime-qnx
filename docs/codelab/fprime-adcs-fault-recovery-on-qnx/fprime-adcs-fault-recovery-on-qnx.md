@@ -15,7 +15,7 @@ feedback_link: https://github.com/qnx/codelabs/issues
 ## Overview
 Duration: 2:00
 
-**Last verified** on 2026-11-27 at fprime-qnx commit `752c5d4d7786767744440089a1e2224db7e9e145` with QNX SDP 8.0.6 and a QNX 8.0.0 x86-64 QEMU/KVM guest under WSL2.
+**Last verified** on 2026-11-27 at fprime-qnx commit `752c5d4d7786767744440089a1e2224db7e9e145` with QNX SDP 8.0.6 and a QNX 8.0.0 x86-64 QEMU/KVM guest under WSL2. Links to project documentation point to commit `f89c5c805072137cbb4501e6df660c7d96873fb4`, which changes only documentation after the verified commit.
 
 The reference deployment simulates an attitude determination and control system (ADCS). `FlightSW` produces an attitude estimate and selects the control source. `MlAdvisor` runs in a separate QNX process and supplies advice through native QNX message passing. This exercise uses the built-in deterministic advisor to make the restart scenario reproducible.
 
@@ -27,7 +27,7 @@ Stop the advisor in a disposable guest and follow the recovery in F Prime's Grou
 ## System Set Up
 Duration: 15:00
 
-Install the Ubuntu packages, enable the libvirt `default` network with `virbr0`, and install your licensed QNX SDP through QNX Software Center. Use the Ubuntu filesystem for the build and the guest image. [Host setup](https://github.com/D1349375/fprime-qnx/blob/752c5d4d7786767744440089a1e2224db7e9e145/docs/en/host-setup.md)
+Install the Ubuntu packages, enable the libvirt `default` network with `virbr0`, and install your licensed QNX SDP through QNX Software Center. Use the Ubuntu filesystem for the build and the guest image. [Host setup](https://github.com/D1349375/fprime-qnx/blob/f89c5c805072137cbb4501e6df660c7d96873fb4/docs/en/host-setup.md)
 
 Run these commands in Ubuntu to clone the repository at the revision this codelab was verified with.
 
@@ -40,7 +40,7 @@ git rev-parse HEAD
 git submodule status --recursive
 ```
 
-Install the F Prime tools pinned by the submodule. In each Ubuntu terminal you use for the build or runner, activate the SDK and virtual environment. Substitute your installation paths where needed. [QNX SDK and F Prime tools](https://github.com/D1349375/fprime-qnx/blob/752c5d4d7786767744440089a1e2224db7e9e145/docs/en/host-setup.md#qnx-sdk-and-f-prime-tools)
+Install the F Prime tools pinned by the submodule. In each Ubuntu terminal you use for the build or runner, activate the SDK and virtual environment. Substitute your installation paths where needed. [QNX SDK and F Prime tools](https://github.com/D1349375/fprime-qnx/blob/f89c5c805072137cbb4501e6df660c7d96873fb4/docs/en/host-setup.md#qnx-sdk-and-f-prime-tools)
 
 ```bash
 source "$HOME/qnx800/qnxsdp-env.sh"
@@ -166,4 +166,4 @@ Duration: 3:00
 - **Port 5000 is busy** Stop the GDS session you no longer need or run `GDS_GUI_PORT=5001 scripts/gds-check.sh --ui` with the same evidence directory setting. Open the matching web port. The runner selects a separate TCP port for the guest connection.
 - **The page stops updating after the second Enter** The reconnect step restarts GDS and then stops the guest. Inspect `capture/event.log` and `capture/channel.log` for the recorded events and telemetry.
 
-The codelab covers the simulated ADCS fault sequence on a QNX x86-64 guest. For the learned advisor, model replay, or deadline validation, follow the separate target checks. [Architecture](https://github.com/D1349375/fprime-qnx/blob/752c5d4d7786767744440089a1e2224db7e9e145/docs/en/architecture.md) · [Reproduction guide](https://github.com/D1349375/fprime-qnx/blob/752c5d4d7786767744440089a1e2224db7e9e145/docs/en/reproduce.md#adcs-ground-system)
+The codelab covers the simulated ADCS fault sequence on a QNX x86-64 guest. For the learned advisor, model replay, or deadline validation, follow the separate target checks. [Architecture](https://github.com/D1349375/fprime-qnx/blob/f89c5c805072137cbb4501e6df660c7d96873fb4/docs/en/architecture.md) · [Reproduction guide](https://github.com/D1349375/fprime-qnx/blob/f89c5c805072137cbb4501e6df660c7d96873fb4/docs/en/reproduce.md#adcs-ground-system)
