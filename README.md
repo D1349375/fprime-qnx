@@ -56,7 +56,7 @@ IPC off the periodic flight path and FlightSW controls which advice it uses.
 | Technological implementation | The pinned [timer and IPC source](#evidence-of-qnx-use), [target OSAL results](docs/en/results.md#osal-v1), [fault case verifier](FprimeQnxReference/test/int/check-m3.py) and [host CI scope](docs/en/reproduce.md#sdk-free-host-checks). |
 | Design | A clean [Ref command round trip](docs/en/reproduce.md#ref-and-gds-v2-and-v2b), [ADCS ground commands and events](docs/en/reproduce.md#adcs-ground-system), and a [recomputable application-behavior report](docs/en/reproduce.md#m4-paired-repair-policy-check). |
 | Potential impact | Reuse the platform in an existing F Prime deployment through the [adoption guide](docs/en/adopt.md) and follow the [upstream status](docs/en/upstream.md) for portability work. |
-| Innovation & AI Creativity | A separate learned advisor tests the process and recovery boundary. The [inference check](docs/en/results.md#trained-advisor-and-offline-replay) verifies agreement between Linux and QNX. The [paired harness](docs/en/reproduce.md#m4-paired-repair-policy-check) varies the SLM repair setting with the workload and model fixed. |
+| Innovation & AI Creativity | A separate learned advisor tests the process and recovery boundary. The [inference check](docs/en/results.md#trained-advisor-and-offline-replay) confirms that the QNX build reproduces the model's reference outputs. The [restart harness](docs/en/reproduce.md#m4-paired-repair-policy-check) checks that FlightSW accepts only fresh advice from the replacement session. |
 | Best use of QNX-specific technologies | Trace the implementation and reproduction check for each [QNX mechanism](docs/en/evidence-index.md#qnx-mechanisms). |
 
 ## See it work
@@ -90,7 +90,7 @@ commands and acceptance checks for the GDS deployment and the separate trained-a
 | F Prime OSAL suites with the portability patch | 261 passed, 0 failed, 1 skipped across 18 suites: 258 passed and 1 skipped in the 17 upstream suites, plus three native CPU and memory checks. The guest lacks `/dev/full`. [Suite results](docs/en/results.md#osal-v1) |
 | ADCS GDS | The stopped advisor's `ProcessDied` reached GDS. FlightSW used FDIR, accepted a fresh session after SLM replacement and reconnected to GDS. [Ground results](docs/en/results.md#ref-and-adcs-ground-system) |
 | ADCS fault cases | Separate FlightSW and advisor processes used UDP and native IPC. The fault matrix exercised FDIR, Gate rejection, sensor isolation and a held IPC reply. [Fault results](docs/en/results.md#deterministic-adcs) |
-| Trained advisor and offline inference | The frozen candidate's cohort has a [restart behavior summary](docs/en/results.md#frozen-candidate-restart-behavior) for fresh-session adoption, replay and revoked-session rejection. The separate OPS-SAT replay matched scores within tolerance and produced matching labels on Linux and QNX. [Model results](docs/en/results.md#trained-advisor-and-offline-replay) |
+| Trained advisor and offline inference | The frozen candidate's cohort has a [restart behavior summary](docs/en/results.md#frozen-candidate-restart-behavior) for fresh-session adoption, replay and revoked-session rejection. In the separate OPS-SAT replay, the QNX build matched the reference scores within tolerance and produced the same labels. [Model results](docs/en/results.md#trained-advisor-and-offline-replay) |
 | Slow sensor drift | On every held-out drift seed, both detector arms isolated the drifting sensor and recovered. Committed estimates stayed within the angle limit. The conventional residual warned before the FFN. [Drift results](docs/en/results.md#slow-sensor-drift) |
 
 ## Adopt it
@@ -123,7 +123,8 @@ model preparation, replay and SDK-free host checks.
 
 Target evidence covers an x86-64 QNX guest under WSL2 and QEMU/KVM. Ref also
 cross-builds for QNX AArch64. The ADCS AArch64 build, AArch64 execution and
-physical QNX hardware remain unverified. Repeated guest tests observed occasional missing cycles. ADCS uses
+physical QNX hardware remain unverified. The project's flight deadline checker occasionally
+recorded a missed cycle in the nested guest. The project publishes no evaluation of QNX timing. ADCS uses
 simulated sensors with a fixed bias and a slow drift on one sensor. In the bias
 exercise FDIR and the FFN first alerted in the same cycle. In the drift comparison
 the conventional residual warned first. Hosted CI runs on Linux.
