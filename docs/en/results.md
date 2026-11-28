@@ -48,9 +48,9 @@ The pinned F Prime v4.4.2 OSAL sources ran with the project's [test portability 
 
 ## Trained advisor and offline replay
 
-- **E6 fixed-weight fixture.** The Linux host and QNX guest ran the same mlpack FFN with fixed weights. Labels matched and scores met the configured tolerance against the independent reference. [Inference rerun](reproduce.md#e6-and-m4-inference-setup)
+- **E6 fixed-weight fixture.** The QNX build of the mlpack FFN with fixed weights reproduced the independent reference: labels matched and scores met the configured tolerance. [Inference rerun](reproduce.md#e6-and-m4-inference-setup)
 - **M4 trained ADCS advisor.** The frozen FFN supplies advice during a simulated +X sun-sensor bias. A separate FFN and a conventional residual are compared on a slow drift of the same sensor. The recorded exercise observed sensor isolation and stable recovery after detection. The frozen candidate ran the paired repair-policy exercise. See the generated recovery summary below and the timing limits for the scope of that evidence. [Restart evidence](evidence-index.md#trained-advisor-recovery) · [Timing scope](limitations.md)
-- **OPS-SAT offline inference.** The separate FFN uses the dataset authors' split. It fits preprocessing on training data and freezes the classification threshold on validation data before applying it to the published test split. Linux and QNX replay labels matched and scores met the configured tolerance. [Training](../../FprimeQnxReference/test/m4/train.py) · [Replay checker](../../FprimeQnxReference/test/m4/compare.py) · [OPSSAT-AD v2](https://doi.org/10.5281/zenodo.15108715)
+- **OPS-SAT offline inference.** The separate FFN uses the dataset authors' split. It fits preprocessing on training data and freezes the classification threshold on validation data before applying it to the published test split. The QNX replay reproduced the reference labels and met the configured score tolerance. [Training](../../FprimeQnxReference/test/m4/train.py) · [Replay checker](../../FprimeQnxReference/test/m4/compare.py) · [OPSSAT-AD v2](https://doi.org/10.5281/zenodo.15108715)
 
 ### Frozen candidate restart behavior
 
@@ -62,7 +62,7 @@ The application behavior summary below was generated with `fault-report.py --pub
 - FlightSW rejected advice from the revoked session in 10 of 10 recorded pairs.
 - Behavior evidence was missing or inconclusive in 0 of 10 restart trials.
 
-The case checker evaluated every planned release against the declared deadline. The full verdict, both repair arms and trace evidence are kept on the test host. [Reproduce the paired run](reproduce.md#m4-paired-repair-policy-check) · [Timing scope](limitations.md)
+The case checker evaluated every planned release against the declared deadline. The full verdict and trace evidence are kept on the test host. [Reproduce the paired run](reproduce.md#m4-paired-repair-policy-check) · [Timing scope](limitations.md)
 
 ### Slow sensor drift
 
@@ -85,7 +85,7 @@ The application behavior summary below was generated with `fault-report.py --pub
 - FlightSW rejected advice from the revoked session in 10 of 10 recorded pairs.
 - Behavior evidence was missing or inconclusive in 1 of 10 restart trials.
 
-The case checker evaluated every planned release against the declared deadline. The full verdict, both repair arms and trace evidence are kept on the test host. [Reproduce the paired run](reproduce.md#m4-paired-repair-policy-check) · [Timing scope](limitations.md)
+The case checker evaluated every planned release against the declared deadline. The full verdict and trace evidence are kept on the test host. [Reproduce the paired run](reproduce.md#m4-paired-repair-policy-check) · [Timing scope](limitations.md)
 
 ### OPS-SAT model quality
 

@@ -1,12 +1,12 @@
 id: fprime-adcs-fault-recovery-on-qnx
 title: Observe F Prime ADCS Fault Recovery on QNX 8.0
 summary: Use F Prime GDS to observe an advisor process exit, deterministic FDIR takeover and the return of a replacement advisor supervised by QNX SLM.
-categories: AI & ML, Porting & Open Source
+categories: Porting & Open Source
 tags: intermediate
 platforms: QEMU, Ubuntu, Windows (WSL)
-published: 2026-12-07
+published: 2026-11-28
 featured: false
-status: draft
+status: published
 authors: Yang
 feedback_link: https://github.com/qnx/codelabs/issues
 
@@ -19,7 +19,7 @@ Duration: 2:00
 
 The reference deployment simulates an attitude determination and control system (ADCS). `FlightSW` produces an attitude estimate and selects the control source. `MlAdvisor` runs in a separate QNX process and supplies advice through native QNX message passing. This exercise uses the built-in deterministic advisor to make the restart scenario reproducible.
 
-Stop the advisor in a disposable guest and follow the recovery in F Prime's Ground Data System (GDS). FlightSW observes the process exit and switches to deterministic fault detection, isolation and recovery (FDIR). QNX System Launch and Monitor (SLM) starts a replacement process. FlightSW returns to the advisor after accepting a valid result in its new session.
+Stop the advisor in a disposable guest and follow the recovery in F Prime's Ground Data System (GDS). GDS reports the process exit, and FlightSW switches to deterministic fault detection, isolation and recovery (FDIR) when the advisor's last result goes stale. QNX System Launch and Monitor (SLM) starts a replacement process. FlightSW returns to the advisor after accepting a valid result in its new session.
 
 - **What you'll learn** Match the process-death event to the original PID, identify FDIR takeover, and distinguish a replacement PID from the fresh session that FlightSW accepts.
 - **What you'll need** An x86-64 Ubuntu 24.04 host with KVM and libvirt (native Ubuntu or WSL2), QNX SDP 8.0.6 with x86-64 target support, and a browser that can reach GDS.
@@ -107,7 +107,7 @@ Open **Events** again and enter `M2Flight` in **Filters**, then press **Enter** 
 Read the recovery events in timestamp order.
 
 1. `M2Flight.processMonitor.ProcessDied` identifies the stopped `MlAdvisor` by PID.
-2. `M2Flight.ground.FdirEngaged` marks the handover to deterministic FDIR.
+2. `M2Flight.ground.FdirEngaged` marks the handover to deterministic FDIR. Its reason, `RESULT_TIMEOUT`, comes from FlightSW's freshness check on the last advisor result, so the handover does not depend on the death event.
 3. A later `M2Flight.ground.AdvisorAccepted` identifies the fresh session that FlightSW accepted.
 
 Check **Event Time** if the table order has changed. Rows before `ProcessDied` can include an `FdirEngaged` and `AdvisorAccepted` pair from the original process, for example when its first session times out during startup. Match the `AdvisorAccepted` after `ProcessDied` to the replacement PID in the next step.

@@ -4,9 +4,9 @@ summary: Cross-build the upstream F Prime Ref flight software deployment for QNX
 categories: Porting & Open Source
 tags: intermediate
 platforms: QEMU, Ubuntu, Windows (WSL)
-published: 2026-12-07
+published: 2026-11-28
 featured: false
-status: draft
+status: published
 authors: Yang
 feedback_link: https://github.com/qnx/codelabs/issues
 
@@ -374,7 +374,7 @@ The image directory, the SSH key and the log directories stay on your machine. D
 After you stop the manual guest, [`scripts/clean-rebuild.sh`](https://github.com/D1349375/fprime-qnx/blob/752c5d4d7786767744440089a1e2224db7e9e145/scripts/clean-rebuild.sh) clones the checkout into a new work directory, generates and builds `Ref`, creates a fresh QNX image with a new SSH key, and runs the same round-trip check:
 
 ```bash
-scripts/clean-rebuild.sh "$(mktemp -d \"$HOME/fprime-qnx-evidence/ref-clean.XXXXXXXX\")"
+scripts/clean-rebuild.sh "$(mktemp -d "$HOME/fprime-qnx-evidence/ref-clean.XXXXXXXX")"
 ```
 
 The last line reads `PASS: clean clone, build, QNX boot and Ref/GDS check`. The work directory it prints holds `logs/source.log` (source and SDK versions), `logs/build.log`, `logs/image.log` and `logs/ref-gds.log`. The script stops its own guest when it finishes.
@@ -440,7 +440,7 @@ The [adoption guide](https://github.com/D1349375/fprime-qnx/blob/752c5d4d7786767
 * This run covers the QNX 8.0.0 x86-64 guest on QEMU/KVM under Ubuntu 24.04 and WSL2. AArch64 execution and physical hardware remain outside its target coverage.
 * The stock F Prime POSIX UART driver is excluded from QNX builds because the SDK headers lack two symbols it uses. The project reported this upstream in [nasa/fprime#6437](https://github.com/nasa/fprime/issues/6437).
 * `Ref` on QNX omits the Rust-based `WasmSequencer` and keeps `cmdSeq`.
-* Repeated tests in the nested WSL2 and QEMU setup occasionally missed a timer cycle. Native Linux/KVM and physical timing coverage remain open.
+* This codelab does not measure timing. The limitations page describes the project's test environment. Native Linux/KVM and physical hardware were not run.
 
 The [limitations page](https://github.com/D1349375/fprime-qnx/blob/752c5d4d7786767744440089a1e2224db7e9e145/docs/en/limitations.md) has the full list.
 
